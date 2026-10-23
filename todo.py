@@ -38,11 +38,15 @@ async def async_setup_entry(
         """Add new todo entities when shopping lists are discovered."""
         data = coordinator.data or {}
         raw_lists = data.get("shopping_lists") or []
+        
+        _LOGGER.debug("Syncing todo entities. Raw shopping lists data: %s", raw_lists)
+
         if isinstance(raw_lists, dict):
             raw_lists = (
                 raw_lists.get("shoppingLists")
                 or raw_lists.get("lists")
                 or raw_lists.get("items")
+                or raw_lists.get("data")
                 or []
             )
         elif not isinstance(raw_lists, list):
@@ -52,9 +56,20 @@ async def async_setup_entry(
         for s_list in raw_lists:
             if not isinstance(s_list, dict):
                 continue
-            list_id = str(s_list.get("id") or s_list.get("shoppingListID") or s_list.get("listId") or "")
+            
+            # Leta efter ID med alla tänkbara nyckelvarianter
+            list_id = str(
+                s_list.get("id")
+                or s_list.get("shoppingListID")
+                or s_list.get("shoppingListId")
+                or s_list.get("listId")
+                or s_list.get("key")
+                or ""
+            ).strip()
+
             if list_id and list_id not in existing_list_ids:
                 existing_list_ids.add(list_id)
+                _LOGGER.info("Discovered new Coop shopping list entity: ID=%s, Name=%s", list_id, s_list.get("name"))
                 new_entities.append(
                     CoopTodoListEntity(coordinator, entry.entry_id, list_id)
                 )
@@ -109,10 +124,24 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
             return None
         shopping_lists = self.coordinator.data.get("shopping_lists") or []
         if isinstance(shopping_lists, dict):
-            shopping_lists = shopping_lists.get("shoppingLists") or shopping_lists.get("lists") or []
+            shopping_lists = (
+                shopping_lists.get("shoppingLists")
+                or shopping_lists.get("lists")
+                or shopping_lists.get("items")
+                or []
+            )
 
         for s_list in shopping_lists:
-            lid = str(s_list.get("id") or s_list.get("shoppingListID") or "")
+            if not isinstance(s_list, dict):
+                continue
+            lid = str(
+                s_list.get("id")
+                or s_list.get("shoppingListID")
+                or s_list.get("shoppingListId")
+                or s_list.get("listId")
+                or s_list.get("key")
+                or ""
+            ).strip()
             if lid == self._list_id:
                 return s_list
         return None
@@ -132,11 +161,13 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         if not list_data:
             return []
 
-        products = list_data.get("products") or []
+        products = list_data.get("products") or list_data.get("items") or []
         items: list[TodoItem] = []
 
         for p in products:
-            p_id = str(p.get("id") or p.get("productId") or "")
+            if not isinstance(p, dict):
+                continue
+            p_id = str(p.get("id") or p.get("productId") or p.get("itemId") or "")
             name = p.get("name") or p.get("text") or "Vara"
             is_checked = bool(p.get("isChecked") or p.get("checked", False))
 
@@ -170,7 +201,6 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         placement = ""
         name = raw_text
 
-        # 1. Parse leading quantity and unit (e.g. '2 st Mjölk', '500 g Köttfärs', '1.5 kg Äpplen')
         sorted_units = sorted(VALID_UNITS, key=len, reverse=True)
         units_pattern = "|".join(re.escape(u) for u in sorted_units)
         match = re.match(rf"^(\d+(?:[.,]\d+)?)\s*({units_pattern})\s+(.+)$", raw_text, re.IGNORECASE)
@@ -179,13 +209,11 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
             unit = match.group(2).lower()
             name = match.group(3).strip()
         else:
-            # Check leading number only (e.g. '2 Mjölk')
             num_match = re.match(r"^(\d+(?:[.,]\d+)?)\s+(.+)$", raw_text)
             if num_match:
                 quantity = num_match.group(1).replace(",", ".")
                 name = num_match.group(2).strip()
 
-        # 2. Check for placement in description or text (e.g. 'Mjölk | Mejeri' or 'Bregott (Mejeri)')
         placement_source = item.description or ""
         delim_match = re.search(r"[\(\|]\s*([^\|\)]+)\s*[\)]?$", name)
         if delim_match:
@@ -217,18 +245,15 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
             _LOGGER.error("Cannot update item without uid")
             return
 
-        # Hämta befintlig produktdata så vi inte tappar bort namn, enhet eller placering
         list_data = self._get_list_data()
         existing_product = {}
         if list_data:
-            for p in list_data.get("products", []):
-                if str(p.get("id")) == str(item.uid):
+            for p in list_data.get("products", list_data.get("items", [])):
+                if str(p.get("id") or p.get("productId") or "") == str(item.uid):
                     existing_product = p
                     break
 
         is_checked = (item.status == TodoItemStatus.COMPLETED) if item.status is not None else None
-        
-        # Använd existerande namn om item.summary är tomt eller generiskt
         product_name = item.summary if item.summary else existing_product.get("name", "Vara")
 
         await self.coordinator.api_client.update_item_in_shopping_list(
@@ -255,18 +280,18 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         await self.coordinator.async_request_refresh()
 
     @property
-    def extra_state_attributes(self) -> dict[str, Any]:
+    def extra_state_attributes(f_self) -> dict[str, Any]:
         """Return extra attributes for the shopping list."""
-        list_data = self._get_list_data()
+        list_data = f_self._get_list_data()
         if not list_data:
             return {}
 
-        products = list_data.get("products") or []
-        checked_count = sum(1 for p in products if p.get("isChecked") or p.get("checked"))
+        products = list_data.get("products") or list_data.get("items") or []
+        checked_count = sum(1 for p in products if isinstance(p, dict) and (p.get("isChecked") or p.get("checked")))
         unchecked_count = len(products) - checked_count
 
         return {
-            "list_id": self._list_id,
+            "list_id": f_self._list_id,
             "created": list_data.get("created"),
             "updated": list_data.get("updated"),
             "total_items": len(products),
