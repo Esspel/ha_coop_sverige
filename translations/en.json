@@ -78,6 +78,9 @@
       },
       "shopping_lists_summary": {
         "name": "Shopping Lists"
+      },
+      "store_deals": {
+        "name": "Store Deals"
       }
     }
   }

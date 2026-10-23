@@ -19,18 +19,45 @@ add_item:
         text:
     unit:
       name: Enhet
-      description: Måttenhet (t.ex. st, kg, l).
+      description: Måttenhet som stöds av Coop (st, kg, g, l, dl, pkt).
       required: false
       example: "st"
       selector:
-        text:
+        select:
+          options:
+            - "st"
+            - "kg"
+            - "g"
+            - "l"
+            - "dl"
+            - "pkt"
+          custom_value: true
     placement:
       name: Avdelning/placering
-      description: Butiksplacering eller avdelning (t.ex. Mejeri, Frukt & Grönt).
+      description: Butiksplacering eller avdelning i butiken.
       required: false
       example: "Mejeri"
       selector:
-        text:
+        select:
+          options:
+            - "Alkohol"
+            - "Bakning · Efterrätter · Frukost"
+            - "Barn · Baby"
+            - "Bröd"
+            - "Djupfryst"
+            - "Drycker"
+            - "Erbjudanden"
+            - "Frukt och grönt"
+            - "Godis · Snacks"
+            - "Huvudingrediens"
+            - "Hygien"
+            - "Konserver · Skafferi"
+            - "Kryddor · Smaksättare"
+            - "Mejeri"
+            - "Mos · Pasta · Ris"
+            - "Städa · Tvätta · Diska"
+            - "Övrigt"
+          custom_value: true
     list_id:
       name: Inköpsliste-ID
       description: ID för inköpslistan. Om tomt används första tillgängliga lista.
@@ -78,17 +105,44 @@ update_item:
         text:
     unit:
       name: Enhet
-      description: Uppdaterad enhet.
+      description: Uppdaterad enhet (st, kg, g, l, dl, pkt).
       required: false
       example: "st"
       selector:
-        text:
+        select:
+          options:
+            - "st"
+            - "kg"
+            - "g"
+            - "l"
+            - "dl"
+            - "pkt"
+          custom_value: true
     placement:
       name: Placering
       description: Uppdaterad avdelning i butiken.
       required: false
       selector:
-        text:
+        select:
+          options:
+            - "Alkohol"
+            - "Bakning · Efterrätter · Frukost"
+            - "Barn · Baby"
+            - "Bröd"
+            - "Djupfryst"
+            - "Drycker"
+            - "Erbjudanden"
+            - "Frukt och grönt"
+            - "Godis · Snacks"
+            - "Huvudingrediens"
+            - "Hygien"
+            - "Konserver · Skafferi"
+            - "Kryddor · Smaksättare"
+            - "Mejeri"
+            - "Mos · Pasta · Ris"
+            - "Städa · Tvätta · Diska"
+            - "Övrigt"
+          custom_value: true
     list_id:
       name: Inköpsliste-ID
       description: ID för listan. Kan utelämnas om produkten kan lokaliseras automatiskt.

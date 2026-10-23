@@ -30,6 +30,36 @@ API_V2 = "v2"
 API_V3 = "v3"
 API_V4 = "v4"
 
+# Valid placement and unit values from Coop API
+VALID_PLACEMENTS = [
+    "Alkohol",
+    "Bakning · Efterrätter · Frukost",
+    "Barn · Baby",
+    "Bröd",
+    "Djupfryst",
+    "Drycker",
+    "Erbjudanden",
+    "Frukt och grönt",
+    "Godis · Snacks",
+    "Huvudingrediens",
+    "Hygien",
+    "Konserver · Skafferi",
+    "Kryddor · Smaksättare",
+    "Mejeri",
+    "Mos · Pasta · Ris",
+    "Städa · Tvätta · Diska",
+    "Övrigt",
+]
+
+VALID_UNITS = [
+    "dl",
+    "g",
+    "kg",
+    "l",
+    "pkt",
+    "st",
+]
+
 # Services
 SERVICE_ADD_ITEM = "add_item"
 SERVICE_UPDATE_ITEM = "update_item"

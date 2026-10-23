@@ -24,10 +24,36 @@ from .const import (
     SERVICE_GET_STORE_INFO,
     SERVICE_GET_STORE_OFFERS,
     SERVICE_UPDATE_ITEM,
+    VALID_PLACEMENTS,
+    VALID_UNITS,
 )
 from .coordinator import CoopCoordinator
+from .sensor import parse_store_deals
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def normalize_unit(unit: str | None) -> str:
+    """Normalize unit string against valid Coop API values."""
+    if not unit:
+        return ""
+    cleaned = unit.strip().lower()
+    for valid in VALID_UNITS:
+        if cleaned == valid.lower():
+            return valid
+    return unit.strip()
+
+
+def normalize_placement(placement: str | None) -> str:
+    """Normalize placement string against valid Coop API values."""
+    if not placement:
+        return ""
+    cleaned = placement.strip().lower().replace("&", "och")
+    for valid in VALID_PLACEMENTS:
+        valid_norm = valid.lower().replace("&", "och")
+        if cleaned == valid_norm or cleaned in valid_norm:
+            return valid
+    return placement.strip()
 
 ATTR_ENTRY_ID = "entry_id"
 ATTR_LIST_ID = "list_id"
@@ -171,8 +197,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         list_id = _resolve_list_id(coordinator, call.data.get(ATTR_LIST_ID))
         name = call.data[ATTR_NAME]
         quantity = call.data.get(ATTR_QUANTITY, "1")
-        unit = call.data.get(ATTR_UNIT, "")
-        placement = call.data.get(ATTR_PLACEMENT, "")
+        unit = normalize_unit(call.data.get(ATTR_UNIT))
+        placement = normalize_placement(call.data.get(ATTR_PLACEMENT))
 
         await coordinator.api_client.add_item_to_shopping_list(
             shopping_list_id=list_id,
@@ -189,13 +215,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         product_id = call.data[ATTR_PRODUCT_ID]
         list_id = _resolve_list_id(coordinator, call.data.get(ATTR_LIST_ID), product_id=product_id)
 
+        unit_raw = call.data.get(ATTR_UNIT)
+        unit = normalize_unit(unit_raw) if unit_raw is not None else None
+        placement_raw = call.data.get(ATTR_PLACEMENT)
+        placement = normalize_placement(placement_raw) if placement_raw is not None else None
+
         await coordinator.api_client.update_item_in_shopping_list(
             shopping_list_id=list_id,
             product_id=product_id,
             name=call.data.get(ATTR_NAME),
             quantity=call.data.get(ATTR_QUANTITY),
-            unit=call.data.get(ATTR_UNIT),
-            placement=call.data.get(ATTR_PLACEMENT),
+            unit=unit,
+            placement=placement,
             is_checked=call.data.get(ATTR_IS_CHECKED),
         )
         await coordinator.async_request_refresh()
@@ -268,7 +299,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         store_id = _resolve_store_id(coordinator, call.data.get(ATTR_STORE_ID))
 
         offers = await coordinator.api_client.get_sorting_groups(store_id)
-        return {"offers": offers}
+        deals = parse_store_deals(offers)
+        return {"offers": offers, "deals": deals}
 
     async def handle_get_personal_offers(call: ServiceCall) -> ServiceResponse:
         """Get active personal member offers."""

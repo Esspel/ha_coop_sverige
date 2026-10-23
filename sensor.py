@@ -1,5 +1,6 @@
 """Sensors for Coop Sverige."""
 
+import datetime as dt
 import logging
 from typing import Any
 
@@ -16,6 +17,64 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .coordinator import CoopCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def parse_store_deals(raw_data: Any) -> list[dict[str, Any]]:
+    """Parse deals and sorting groups into structured list."""
+    groups = []
+    if isinstance(raw_data, list):
+        groups = raw_data
+    elif isinstance(raw_data, dict):
+        groups = raw_data.get("sortingGroups") or raw_data.get("offers") or raw_data.get("items") or []
+
+    deals: list[dict[str, Any]] = []
+    for g in groups:
+        campaigns = g.get("campaigns") or g.get("offers") or g.get("items") or [g]
+        for c in campaigns:
+            if not isinstance(c, dict):
+                continue
+            title = c.get("heading") or c.get("title") or c.get("name")
+            if not title:
+                continue
+
+            price_info = c.get("priceInformation") or {}
+            splash = price_info.get("unifiedSplash") or {}
+            val = splash.get("value", "")
+            unit = splash.get("unit", "")
+            tag = splash.get("tag", "")
+            price_display = f"{val} {unit} {tag}".strip() if val else str(price_info.get("price", ""))
+
+            # Cluster items (GTIN/EANs and products)
+            articles = []
+            for item in c.get("clusterItems") or []:
+                if isinstance(item, dict):
+                    vol_parts = []
+                    if item.get("netVolume"):
+                        vol_parts.append(str(item["netVolume"]))
+                    if item.get("netContentUnit"):
+                        vol_parts.append(str(item["netContentUnit"]))
+                    articles.append({
+                        "ean": item.get("externalId"),
+                        "volume": " ".join(vol_parts),
+                        "campaign_id": item.get("campaignId") or item.get("id"),
+                        "image_url": item.get("imageUrl") or item.get("image"),
+                    })
+
+            deals.append({
+                "title": title,
+                "price": price_display,
+                "unified_splash": splash,
+                "is_member_price": bool(price_info.get("isMemberPrice")),
+                "deal_type": price_info.get("dealType"),
+                "limit": price_info.get("dealOfferLimitText"),
+                "comparative_price": (
+                    price_info.get("comparativePriceText")
+                    or price_info.get("enrichedComparisonPrice")
+                ),
+                "image_url": c.get("imageUrl") or c.get("image"),
+                "articles": articles,
+            })
+    return deals
 
 
 async def async_setup_entry(
@@ -145,9 +204,10 @@ async def async_setup_entry(
             native_unit_of_measurement="",
             is_text=True,
         ),
-        # New sensors for expanded API features
+        # Extended API Sensors
         CoopPersonalOffersSensor(coordinator, entry.entry_id),
         CoopFavoriteStoreSensor(coordinator, entry.entry_id),
+        CoopStoreDealsSensor(coordinator, entry.entry_id),
         CoopShoppingListsSummarySensor(coordinator, entry.entry_id),
     ]
 
@@ -216,7 +276,7 @@ class CoopBonusSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
 
 
 class CoopPersonalOffersSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
-    """Sensor showing active personal offers and discounts."""
+    """Sensor showing active targeted personal member offers."""
 
     _attr_icon = "mdi:ticket-percent"
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -250,7 +310,8 @@ class CoopPersonalOffersSensor(CoordinatorEntity[CoopCoordinator], SensorEntity)
                 "title": o.get("title") or o.get("heading") or o.get("name") or "Erbjudande",
                 "description": o.get("description") or o.get("body") or "",
                 "rebate": o.get("rebate") or o.get("discountText") or "",
-                "remaining_use": o.get("remainingUse"),
+                "scoring_type": o.get("dealScoringType") or "STANDARD",
+                "remaining_use": o.get("remainingUse", 1),
                 "status": o.get("status"),
                 "valid_to": o.get("validTo") or o.get("endDate"),
                 "channels": o.get("channels", []),
@@ -264,14 +325,14 @@ class CoopPersonalOffersSensor(CoordinatorEntity[CoopCoordinator], SensorEntity)
 
 
 class CoopFavoriteStoreSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
-    """Sensor showing details and opening hours for the member's favorite store."""
+    """Sensor showing details, amenities, and holiday opening hours for the store."""
 
     _attr_icon = "mdi:store"
 
     def __init__(self, coordinator: CoopCoordinator, entry_id: str) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{entry_id}_favorite_store"
-        self._attr_name = "Coop Favoritbutik"
+        self._attr_name = "Coop Butik"
 
     def _get_store_info(self) -> dict[str, Any]:
         if not self.coordinator.data:
@@ -318,11 +379,32 @@ class CoopFavoriteStoreSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
         phone = info.get("phone") or info.get("telephone") or fav.get("phone")
         web_url = info.get("url") or info.get("webUrl")
 
+        # Coordinates
+        location = info.get("location") or info.get("coordinates") or {}
+        lat = location.get("latitude") or info.get("latitude")
+        lon = location.get("longitude") or info.get("longitude")
+
         # Services offered (e.g. Scan & Pay, Snabbkassa, Salladsbar, Postombud)
         services = info.get("services") or []
+        services_lower = [str(s).lower() for s in services] if isinstance(services, list) else []
+
+        service_flags = {
+            "scan_and_pay": any("scan" in s or "shopexpress" in s for s in services_lower),
+            "self_checkout": any("snabbkassa" in s or "självbetjäning" in s for s in services_lower),
+            "salad_bar": any("sallad" in s for s in services_lower),
+            "postal_services": any("post" in s or "paket" in s for s in services_lower),
+            "instabox": any("instabox" in s for s in services_lower),
+            "budbee": any("budbee" in s for s in services_lower),
+            "atg": any("atg" in s for s in services_lower),
+            "svenska_spel": any("svenska spel" in s for s in services_lower),
+        }
 
         # Irregular Opening Hours (holidays calendar)
-        irregular_hours = info.get("futureIrregularOpeningHours") or info.get("irregularOpeningHours") or []
+        irregular_hours = (
+            info.get("futureIrregularOpeningHours")
+            or info.get("irregularOpeningHours")
+            or []
+        )
         user_warnings = [
             h for h in irregular_hours
             if isinstance(h, dict) and h.get("visibleForEndUsers")
@@ -332,12 +414,7 @@ class CoopFavoriteStoreSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
         regular_hours = info.get("openingHours") or info.get("regularOpeningHours") or []
 
         # Current campaigns count if available
-        offers_data = self.coordinator.data.get("primary_store_offers") or {}
-        campaign_count = 0
-        if isinstance(offers_data, list):
-            campaign_count = len(offers_data)
-        elif isinstance(offers_data, dict):
-            campaign_count = len(offers_data.get("sortingGroups") or offers_data.get("items") or [])
+        deals = parse_store_deals(self.coordinator.data.get("primary_store_offers"))
 
         attrs: dict[str, Any] = {
             "ledger_account_number": ledger,
@@ -346,14 +423,53 @@ class CoopFavoriteStoreSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
             "city": city,
             "phone": phone,
             "web_url": web_url,
+            "latitude": lat,
+            "longitude": lon,
             "services": services,
+            **service_flags,
             "regular_opening_hours": regular_hours,
             "irregular_opening_hours": irregular_hours,
             "upcoming_holiday_warnings": user_warnings,
-            "active_campaigns_count": campaign_count,
+            "active_campaigns_count": len(deals),
         }
 
         return {k: v for k, v in attrs.items() if v is not None}
+
+
+class CoopStoreDealsSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
+    """Sensor showing active store deals, unifiedSplash pricing and GTIN/EAN barcodes."""
+
+    _attr_icon = "mdi:tag-multiple"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "erbjudanden"
+
+    def __init__(self, coordinator: CoopCoordinator, entry_id: str) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry_id}_store_deals"
+        self._attr_name = "Coop Butikserbjudanden"
+
+    @property
+    def native_value(self) -> int:
+        """Return the count of active deals."""
+        if not self.coordinator.data:
+            return 0
+        deals = parse_store_deals(self.coordinator.data.get("primary_store_offers"))
+        return len(deals)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return list of top deals with price and EAN details."""
+        if not self.coordinator.data:
+            return {}
+
+        deals = parse_store_deals(self.coordinator.data.get("primary_store_offers"))
+        store_info = self.coordinator.data.get("primary_store_info") or {}
+
+        return {
+            "store_name": store_info.get("name"),
+            "total_deals_count": len(deals),
+            "deals": deals[:30],  # Top 30 deals to maintain HA state size limits
+        }
 
 
 class CoopShoppingListsSummarySensor(CoordinatorEntity[CoopCoordinator], SensorEntity):

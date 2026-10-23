@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from homeassistant.components.todo import (
@@ -16,7 +17,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import DOMAIN, VALID_PLACEMENTS, VALID_UNITS
 from .coordinator import CoopCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -139,10 +140,50 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         return items
 
     async def async_create_todo_item(self, item: TodoItem) -> None:
-        """Create a new shopping item."""
+        """Create a new shopping item with automatic quantity/unit/placement parsing."""
+        raw_text = item.summary.strip()
+        quantity = "1"
+        unit = ""
+        placement = ""
+        name = raw_text
+
+        # 1. Parse leading quantity and unit (e.g. '2 st Mjölk', '500 g Köttfärs', '1.5 kg Äpplen')
+        units_pattern = "|".join(re.escape(u) for u in VALID_UNITS)
+        match = re.match(rf"^(\d+(?:[.,]\d+)?)\s*({units_pattern})\s+(.+)$", raw_text, re.IGNORECASE)
+        if match:
+            quantity = match.group(1).replace(",", ".")
+            unit = match.group(2).lower()
+            name = match.group(3).strip()
+        else:
+            # Check leading number only (e.g. '2 Mjölk')
+            num_match = re.match(r"^(\d+(?:[.,]\d+)?)\s+(.+)$", raw_text)
+            if num_match:
+                quantity = num_match.group(1).replace(",", ".")
+                name = num_match.group(2).strip()
+
+        # 2. Check for placement in description or text (e.g. 'Mjölk | Mejeri' or 'Bregott (Mejeri)')
+        placement_source = item.description or ""
+        delim_match = re.search(r"[\(\|]\s*([^\|\)]+)\s*[\)]?$", name)
+        if delim_match:
+            candidate = delim_match.group(1).strip()
+            for p in VALID_PLACEMENTS:
+                if candidate.lower() == p.lower():
+                    placement = p
+                    name = name[:delim_match.start()].strip()
+                    break
+
+        if not placement and placement_source:
+            for p in VALID_PLACEMENTS:
+                if p.lower() in placement_source.lower():
+                    placement = p
+                    break
+
         await self.coordinator.api_client.add_item_to_shopping_list(
             shopping_list_id=self._list_id,
-            name=item.summary,
+            name=name,
+            quantity=quantity,
+            unit=unit,
+            placement=placement,
         )
         await self.coordinator.async_request_refresh()
 

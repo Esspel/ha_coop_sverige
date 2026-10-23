@@ -78,6 +78,9 @@
       },
       "shopping_lists_summary": {
         "name": "Inköpslistor"
+      },
+      "store_deals": {
+        "name": "Butikserbjudanden"
       }
     }
   }

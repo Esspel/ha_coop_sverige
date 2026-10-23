@@ -254,6 +254,13 @@ class CoopAPIClient:
         """Fetch the member's favorite stores."""
         return await self._api_request("GET", f"{STORE_BASE}/favorite-stores/me?api-version=v1")
 
+    async def get_stores_by_coordinates(self, latitude: float, longitude: float) -> list[dict[str, Any]] | dict[str, Any]:
+        """Find nearby stores based on geographical coordinates."""
+        return await self._api_request(
+            "GET",
+            f"{STORE_BASE}/stores?latitude={latitude}&longitude={longitude}&api-version=v3",
+        )
+
     async def get_store_info(self, ledger_account_number: str | int) -> dict[str, Any]:
         """Fetch comprehensive store info, services and opening hours."""
         return await self._api_request("GET", f"{STORE_BASE}/stores/{ledger_account_number}?api-version=v3")

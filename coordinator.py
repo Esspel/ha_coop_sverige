@@ -51,7 +51,7 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as e:
             _LOGGER.warning("Failed to fetch shopping lists: %s", e)
 
-        # 3. Fetch personal offers
+        # 3. Fetch personal member offers
         personal_offers: list[dict[str, Any]] = []
         try:
             raw_offers = await self.api_client.get_personal_offers()
@@ -67,7 +67,7 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as e:
             _LOGGER.warning("Failed to fetch personal offers: %s", e)
 
-        # 4. Fetch favorite stores
+        # 4. Fetch favorite stores or nearby stores via coordinates
         favorite_stores: list[dict[str, Any]] = []
         primary_store_info: dict[str, Any] = {}
         primary_store_offers: dict[str, Any] = {}
@@ -78,7 +78,20 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             elif isinstance(raw_stores, dict):
                 favorite_stores = raw_stores.get("stores") or raw_stores.get("favoriteStores") or []
 
-            # If user has a favorite store, fetch detailed store info and campaigns
+            # If no favorite store set in app, find closest store via Home Assistant coordinates
+            if not favorite_stores and hasattr(self.hass.config, "latitude") and self.hass.config.latitude:
+                try:
+                    nearby = await self.api_client.get_stores_by_coordinates(
+                        self.hass.config.latitude, self.hass.config.longitude
+                    )
+                    if isinstance(nearby, list) and nearby:
+                        favorite_stores = nearby
+                    elif isinstance(nearby, dict):
+                        favorite_stores = nearby.get("stores") or nearby.get("items") or []
+                except Exception as err:
+                    _LOGGER.debug("Could not fetch nearby stores: %s", err)
+
+            # If store found, fetch full store details, opening hours, holiday calendar and campaigns
             if favorite_stores:
                 first_store = favorite_stores[0]
                 ledger = (
@@ -136,7 +149,7 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         active_offers = []
         for offer in personal_offers:
             status = offer.get("status")
-            # status: 1 = active / ready at cash register
+            # status: 1 = active / ready at cash register, 4 = used
             if status in (1, "1", "Active", "active") or status is None:
                 active_offers.append(offer)
 

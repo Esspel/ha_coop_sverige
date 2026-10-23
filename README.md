@@ -135,6 +135,30 @@ data:
   name: "Tacos på Fredag"
 ```
 
+### 🏷️ Giltiga avdelningar och enheter
+När du lägger till eller ändrar varor via Home Assistants UI finns fördefinierade val i rullistorna:
+- **Enheter (`unit`)**: `st`, `kg`, `g`, `l`, `dl`, `pkt`
+- **Avdelningar/placeringar (`placement`)**:
+  - `Alkohol`
+  - `Bakning · Efterrätter · Frukost`
+  - `Barn · Baby`
+  - `Bröd`
+  - `Djupfryst`
+  - `Drycker`
+  - `Erbjudanden`
+  - `Frukt och grönt`
+  - `Godis · Snacks`
+  - `Huvudingrediens`
+  - `Hygien`
+  - `Konserver · Skafferi`
+  - `Kryddor · Smaksättare`
+  - `Mejeri`
+  - `Mos · Pasta · Ris`
+  - `Städa · Tvätta · Diska`
+  - `Övrigt`
+
+*Tips: Skriver du t.ex. `"2 st Mjölk (Mejeri)"` eller `"500 g Köttfärs"` i Home Assistants Todo-kort eller via röstassistenten så tolkas kvantitet, enhet, namn och avdelning automatiskt!*
+
 ---
 
 ### Butiker och erbjudanden
