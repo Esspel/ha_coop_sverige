@@ -13,20 +13,25 @@ from .services import async_setup_services
 
 _LOGGER = logging.getLogger(__name__)
 
+
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Coop Sverige component."""
     hass.data.setdefault(DOMAIN, {})
     await async_setup_services(hass)
     return True
 
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> bool:
     """Set up Coop Sverige from a config entry."""
+    session_cookie = entry.options.get(CONF_SESSION_COOKIE) or entry.data[CONF_SESSION_COOKIE]
+    sub_key = entry.options.get(CONF_SUB_KEY) or entry.data.get(CONF_SUB_KEY)
+
     client = CoopAPIClient(
         session=async_get_clientsession(hass),
-        session_cookie=entry.data[CONF_SESSION_COOKIE],
-        sub_key=entry.data.get(CONF_SUB_KEY),
+        session_cookie=session_cookie,
+        sub_key=sub_key,
     )
 
     coordinator = CoopCoordinator(
@@ -44,7 +49,16 @@ async def async_setup_entry(
     # Forward to platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # Listen for options updates
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
     return True
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload config entry when options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
+
 
 async def async_unload_entry(
     hass: HomeAssistant, entry: ConfigEntry

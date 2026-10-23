@@ -114,58 +114,70 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.warning("Failed to fetch favorite stores: %s", e)
 
         # Parse yearly loyalty response
+        yearly = yearly if isinstance(yearly, dict) else {}
+        balance = balance if isinstance(balance, dict) else {}
+        shopping_lists = shopping_lists if isinstance(shopping_lists, list) else []
+        personal_offers = personal_offers if isinstance(personal_offers, list) else []
+        favorite_stores = favorite_stores if isinstance(favorite_stores, list) else []
+
+        point_groupings = yearly.get("pointGroupings") or []
         point_groups: dict[Any, dict[str, Any]] = {}
-        for group in yearly.get("pointGroupings", []):
-            gid = group.get("id")
-            point_groups[gid] = {
-                "label": group.get("label", ""),
-                "points": group.get("points", 0),
-                "monetary": group.get("monetary", 0),
-                "type": group.get("type", ""),
-            }
+        for group in point_groupings:
+            if isinstance(group, dict):
+                gid = group.get("id")
+                point_groups[gid] = {
+                    "label": group.get("label", ""),
+                    "points": group.get("points", 0),
+                    "monetary": group.get("monetary", 0),
+                    "type": group.get("type", ""),
+                }
 
         # Extract bonus progress info
-        progress_info = yearly.get("bonusProgressInfo", "")
+        progress_info = yearly.get("bonusProgressInfo") or ""
         bonus_info: dict[str, Any] = {
             "next_level_kr": 0.0,
             "days_until_next_level": 0,
         }
 
-        if "kr till nästa nivå" in progress_info:
-            try:
-                next_level_kr = progress_info.split("kr till nästa nivå")[0].split(": ")[-1].strip()
-                bonus_info["next_level_kr"] = float(next_level_kr.replace(".", "").replace(",", "."))
-            except (ValueError, IndexError):
-                bonus_info["next_level_kr"] = 0.0
+        if isinstance(progress_info, str):
+            if "kr till nästa nivå" in progress_info:
+                try:
+                    next_level_kr = progress_info.split("kr till nästa nivå")[0].split(": ")[-1].strip()
+                    bonus_info["next_level_kr"] = float(next_level_kr.replace(".", "").replace(",", "."))
+                except (ValueError, IndexError):
+                    bonus_info["next_level_kr"] = 0.0
 
-        if "dagar kvar att samla" in progress_info:
-            try:
-                days_left = progress_info.split("dagar kvar att samla")[0].split(": ")[-1].strip()
-                bonus_info["days_until_next_level"] = int(days_left)
-            except (ValueError, IndexError):
-                bonus_info["days_until_next_level"] = 0
+            if "dagar kvar att samla" in progress_info:
+                try:
+                    days_left = progress_info.split("dagar kvar att samla")[0].split(": ")[-1].strip()
+                    bonus_info["days_until_next_level"] = int(days_left)
+                except (ValueError, IndexError):
+                    bonus_info["days_until_next_level"] = 0
 
         # Parse active personal offers
         active_offers = []
         for offer in personal_offers:
-            status = offer.get("status")
-            # status: 1 = active / ready at cash register, 4 = used
-            if status in (1, "1", "Active", "active") or status is None:
-                active_offers.append(offer)
+            if isinstance(offer, dict):
+                status = offer.get("status")
+                # status: 1 = active / ready at cash register, 4 = used
+                if status in (1, "1", "Active", "active") or status is None:
+                    active_offers.append(offer)
 
         # Count total and pending shopping items
         total_items_count = 0
         unchecked_items_count = 0
         for s_list in shopping_lists:
-            products = s_list.get("products") or []
-            total_items_count += len(products)
-            unchecked_items_count += sum(
-                1 for p in products if not (p.get("isChecked") or p.get("checked"))
-            )
+            if isinstance(s_list, dict):
+                products = s_list.get("products") or []
+                if isinstance(products, list):
+                    total_items_count += len(products)
+                    unchecked_items_count += sum(
+                        1 for p in products if isinstance(p, dict) and not (p.get("isChecked") or p.get("checked"))
+                    )
 
         data = {
             "total_kr": yearly.get("monetaryEarnings", 0),
-            "total_points": sum(g.get("points", 0) for g in yearly.get("pointGroupings", [])),
+            "total_points": sum(g.get("points", 0) for g in point_groupings if isinstance(g, dict)),
             "monthly_bonus_kr": point_groups.get(1, {}).get("monetary", 0),
             "monthly_bonus_points": point_groups.get(1, {}).get("points", 0),
             "member_prices_kr": point_groups.get(3, {}).get("monetary", 0),

@@ -11,9 +11,11 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .const import DOMAIN
 from .coordinator import CoopCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -190,7 +192,7 @@ async def async_setup_entry(
             icon="mdi:login",
             device_class=None,
             state_class=None,
-            native_unit_of_measurement="",
+            native_unit_of_measurement=None,
             is_text=True,
         ),
         CoopBonusSensor(
@@ -201,7 +203,7 @@ async def async_setup_entry(
             icon="mdi:card-account-details",
             device_class=None,
             state_class=None,
-            native_unit_of_measurement="",
+            native_unit_of_measurement=None,
             is_text=True,
         ),
         # Extended API Sensors
@@ -211,10 +213,30 @@ async def async_setup_entry(
         CoopShoppingListsSummarySensor(coordinator, entry.entry_id),
     ]
 
-    async_add_entities(sensors, update_before_add=True)
+    async_add_entities(sensors)
 
 
-class CoopBonusSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
+class CoopBaseSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
+    """Base sensor for Coop Sverige entities with device info."""
+
+    def __init__(self, coordinator: CoopCoordinator, entry_id: str) -> None:
+        super().__init__(coordinator)
+        self._entry_id = entry_id
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information linking all entities to a single Coop device."""
+        member_id = self.coordinator.data.get("member_id") if self.coordinator.data else None
+        name = f"Coop Sverige ({member_id})" if member_id else "Coop Sverige"
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry_id)},
+            name=name,
+            manufacturer="Coop Sverige",
+            model="Coop Medlem & Butik",
+        )
+
+
+class CoopBonusSensor(CoopBaseSensor):
     """Representation of a Coop Bonus sensor."""
 
     def __init__(
@@ -226,10 +248,10 @@ class CoopBonusSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
         icon: str,
         device_class: SensorDeviceClass | None = None,
         state_class: SensorStateClass | None = None,
-        native_unit_of_measurement: str = "",
+        native_unit_of_measurement: str | None = None,
         is_text: bool = False,
     ) -> None:
-        super().__init__(coordinator)
+        super().__init__(coordinator, entry_id)
         self._key = key
         self._name = name
         self._icon = icon
@@ -253,9 +275,14 @@ class CoopBonusSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
         value = data.get(self._key)
         if self._is_text:
             return str(value) if value is not None else None
-        if isinstance(value, float):
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
             return round(value, 2)
-        return value
+        try:
+            return round(float(value), 2)
+        except (ValueError, TypeError):
+            return value
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -275,7 +302,7 @@ class CoopBonusSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
         return {}
 
 
-class CoopPersonalOffersSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
+class CoopPersonalOffersSensor(CoopBaseSensor):
     """Sensor showing active targeted personal member offers."""
 
     _attr_icon = "mdi:ticket-percent"
@@ -283,7 +310,7 @@ class CoopPersonalOffersSensor(CoordinatorEntity[CoopCoordinator], SensorEntity)
     _attr_native_unit_of_measurement = "st"
 
     def __init__(self, coordinator: CoopCoordinator, entry_id: str) -> None:
-        super().__init__(coordinator)
+        super().__init__(coordinator, entry_id)
         self._attr_unique_id = f"{entry_id}_active_personal_offers"
         self._attr_name = "Aktiva personliga erbjudanden"
 
@@ -306,44 +333,46 @@ class CoopPersonalOffersSensor(CoordinatorEntity[CoopCoordinator], SensorEntity)
 
         formatted_offers = []
         for o in active_offers:
-            formatted_offers.append({
-                "title": o.get("title") or o.get("heading") or o.get("name") or "Erbjudande",
-                "description": o.get("description") or o.get("body") or "",
-                "rebate": o.get("rebate") or o.get("discountText") or "",
-                "scoring_type": o.get("dealScoringType") or "STANDARD",
-                "remaining_use": o.get("remainingUse", 1),
-                "status": o.get("status"),
-                "valid_to": o.get("validTo") or o.get("endDate"),
-                "channels": o.get("channels", []),
-                "eans": o.get("eans", []),
-            })
+            if isinstance(o, dict):
+                formatted_offers.append({
+                    "title": o.get("title") or o.get("heading") or o.get("name") or "Erbjudande",
+                    "description": o.get("description") or o.get("body") or "",
+                    "rebate": o.get("rebate") or o.get("discountText") or "",
+                    "scoring_type": o.get("dealScoringType") or "STANDARD",
+                    "remaining_use": o.get("remainingUse", 1),
+                    "status": o.get("status"),
+                    "valid_to": o.get("validTo") or o.get("endDate"),
+                    "channels": o.get("channels", []),
+                    "eans": o.get("eans", []),
+                })
 
         return {
-            "total_personal_offers": len(raw_offers),
+            "total_personal_offers": len(raw_offers) if isinstance(raw_offers, list) else 0,
             "active_offers": formatted_offers,
         }
 
 
-class CoopFavoriteStoreSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
+class CoopFavoriteStoreSensor(CoopBaseSensor):
     """Sensor showing details, amenities, and holiday opening hours for the store."""
 
     _attr_icon = "mdi:store"
 
     def __init__(self, coordinator: CoopCoordinator, entry_id: str) -> None:
-        super().__init__(coordinator)
+        super().__init__(coordinator, entry_id)
         self._attr_unique_id = f"{entry_id}_favorite_store"
         self._attr_name = "Coop Butik"
 
     def _get_store_info(self) -> dict[str, Any]:
         if not self.coordinator.data:
             return {}
-        return self.coordinator.data.get("primary_store_info") or {}
+        info = self.coordinator.data.get("primary_store_info")
+        return info if isinstance(info, dict) else {}
 
     def _get_fav_store_summary(self) -> dict[str, Any]:
         if not self.coordinator.data:
             return {}
         favs = self.coordinator.data.get("favorite_stores") or []
-        return favs[0] if favs else {}
+        return favs[0] if isinstance(favs, list) and favs else {}
 
     @property
     def native_value(self) -> str:
@@ -381,8 +410,8 @@ class CoopFavoriteStoreSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
 
         # Coordinates
         location = info.get("location") or info.get("coordinates") or {}
-        lat = location.get("latitude") or info.get("latitude")
-        lon = location.get("longitude") or info.get("longitude")
+        lat = location.get("latitude") if isinstance(location, dict) else info.get("latitude")
+        lon = location.get("longitude") if isinstance(location, dict) else info.get("longitude")
 
         # Services offered (e.g. Scan & Pay, Snabbkassa, Salladsbar, Postombud)
         services = info.get("services") or []
@@ -408,7 +437,7 @@ class CoopFavoriteStoreSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
         user_warnings = [
             h for h in irregular_hours
             if isinstance(h, dict) and h.get("visibleForEndUsers")
-        ]
+        ] if isinstance(irregular_hours, list) else []
 
         # Regular Opening Hours
         regular_hours = info.get("openingHours") or info.get("regularOpeningHours") or []
@@ -436,7 +465,7 @@ class CoopFavoriteStoreSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
         return {k: v for k, v in attrs.items() if v is not None}
 
 
-class CoopStoreDealsSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
+class CoopStoreDealsSensor(CoopBaseSensor):
     """Sensor showing active store deals, unifiedSplash pricing and GTIN/EAN barcodes."""
 
     _attr_icon = "mdi:tag-multiple"
@@ -444,7 +473,7 @@ class CoopStoreDealsSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
     _attr_native_unit_of_measurement = "erbjudanden"
 
     def __init__(self, coordinator: CoopCoordinator, entry_id: str) -> None:
-        super().__init__(coordinator)
+        super().__init__(coordinator, entry_id)
         self._attr_unique_id = f"{entry_id}_store_deals"
         self._attr_name = "Coop Butikserbjudanden"
 
@@ -463,7 +492,8 @@ class CoopStoreDealsSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
             return {}
 
         deals = parse_store_deals(self.coordinator.data.get("primary_store_offers"))
-        store_info = self.coordinator.data.get("primary_store_info") or {}
+        store_info = self.coordinator.data.get("primary_store_info")
+        store_info = store_info if isinstance(store_info, dict) else {}
 
         return {
             "store_name": store_info.get("name"),
@@ -472,7 +502,7 @@ class CoopStoreDealsSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
         }
 
 
-class CoopShoppingListsSummarySensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
+class CoopShoppingListsSummarySensor(CoopBaseSensor):
     """Sensor providing a summary of all shopping lists."""
 
     _attr_icon = "mdi:format-list-checks"
@@ -480,7 +510,7 @@ class CoopShoppingListsSummarySensor(CoordinatorEntity[CoopCoordinator], SensorE
     _attr_native_unit_of_measurement = "listor"
 
     def __init__(self, coordinator: CoopCoordinator, entry_id: str) -> None:
-        super().__init__(coordinator)
+        super().__init__(coordinator, entry_id)
         self._attr_unique_id = f"{entry_id}_shopping_lists_summary"
         self._attr_name = "Coop Inköpslistor"
 
@@ -492,7 +522,7 @@ class CoopShoppingListsSummarySensor(CoordinatorEntity[CoopCoordinator], SensorE
         shopping_lists = self.coordinator.data.get("shopping_lists") or []
         if isinstance(shopping_lists, dict):
             shopping_lists = shopping_lists.get("shoppingLists") or shopping_lists.get("lists") or []
-        return len(shopping_lists)
+        return len(shopping_lists) if isinstance(shopping_lists, list) else 0
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -503,20 +533,24 @@ class CoopShoppingListsSummarySensor(CoordinatorEntity[CoopCoordinator], SensorE
         shopping_lists = self.coordinator.data.get("shopping_lists") or []
         if isinstance(shopping_lists, dict):
             shopping_lists = shopping_lists.get("shoppingLists") or shopping_lists.get("lists") or []
+        if not isinstance(shopping_lists, list):
+            shopping_lists = []
 
         lists_summary = []
         for s_list in shopping_lists:
-            lid = str(s_list.get("id") or s_list.get("shoppingListID") or "")
-            name = s_list.get("name") or "Inköpslista"
-            products = s_list.get("products") or []
-            checked_count = sum(1 for p in products if p.get("isChecked") or p.get("checked"))
-            lists_summary.append({
-                "id": lid,
-                "name": name,
-                "total_items": len(products),
-                "unchecked_items": len(products) - checked_count,
-                "checked_items": checked_count,
-            })
+            if isinstance(s_list, dict):
+                lid = str(s_list.get("id") or s_list.get("shoppingListID") or "")
+                name = s_list.get("name") or "Inköpslista"
+                products = s_list.get("products") or []
+                products = products if isinstance(products, list) else []
+                checked_count = sum(1 for p in products if isinstance(p, dict) and (p.get("isChecked") or p.get("checked")))
+                lists_summary.append({
+                    "id": lid,
+                    "name": name,
+                    "total_items": len(products),
+                    "unchecked_items": len(products) - checked_count,
+                    "checked_items": checked_count,
+                })
 
         return {
             "total_items_count": self.coordinator.data.get("total_shopping_items", 0),

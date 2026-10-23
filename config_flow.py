@@ -110,15 +110,22 @@ class CoopConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class CoopOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for Coop Sverige."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = config_entry
+    def __init__(self, config_entry: config_entries.ConfigEntry | None = None) -> None:
+        """Initialize options flow."""
+        if config_entry is not None:
+            self._config_entry = config_entry
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        cookie = self.config_entry.data.get(CONF_SESSION_COOKIE, "")
-        sub_key = self.config_entry.data.get(CONF_SUB_KEY, DEFAULT_SUB_KEY)
+        entry = getattr(self, "config_entry", None) or getattr(self, "_config_entry", None)
+        cookie = ""
+        sub_key = DEFAULT_SUB_KEY
+        if entry:
+            cookie = entry.options.get(CONF_SESSION_COOKIE) or entry.data.get(CONF_SESSION_COOKIE, "")
+            sub_key = entry.options.get(CONF_SUB_KEY) or entry.data.get(CONF_SUB_KEY, DEFAULT_SUB_KEY)
+
         return self.async_show_form(
             step_id="init",
             data_schema=_get_schema(default_cookie=cookie, default_sub_key=sub_key),

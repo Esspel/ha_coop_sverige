@@ -14,6 +14,7 @@ from homeassistant.components.todo import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -79,6 +80,18 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         self._entry_id = entry_id
         self._attr_unique_id = f"{entry_id}_todo_{list_id}"
         self._attr_icon = "mdi:cart-outline"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information linking this list to the Coop Sverige device."""
+        member_id = self.coordinator.data.get("member_id") if self.coordinator.data else None
+        name = f"Coop Sverige ({member_id})" if member_id else "Coop Sverige"
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry_id)},
+            name=name,
+            manufacturer="Coop Sverige",
+            model="Coop Medlem & Butik",
+        )
 
     def _get_list_data(self) -> dict[str, Any] | None:
         """Find the matching shopping list data from coordinator."""
