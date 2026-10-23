@@ -1,7 +1,6 @@
 import logging
 from typing import Any
 
-import aiohttp
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
@@ -22,7 +21,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class CoopBonusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Coop Bonus."""
+    """Handle a config flow for Coop Sverige."""
 
     VERSION = 1
 
@@ -48,10 +47,10 @@ class CoopBonusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     if resp.status != 200:
                         errors["base"] = "invalid_cookie"
                         return self.async_show_form(step_id="user", data_schema=_get_schema(), errors=errors)
-                    
+
                     result = await resp.json()
                     email = result.get("email", "Okänd")
-                    name = f"Coop Bonus ({email})"
+                    name = f"Coop Sverige ({email})"
 
             except Exception as e:
                 _LOGGER.error("Validation failed: %s", e)
@@ -100,3 +99,7 @@ def _get_schema():
             ),
         }
     )
+
+
+CoopConfigFlow = CoopBonusConfigFlow
+CoopOptionsFlowHandler = CoopBonusOptionsFlowHandler

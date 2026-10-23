@@ -1,4 +1,5 @@
 {
-  "name": "Coop Bonus",
-  "content_in_root": true
+  "name": "Coop Sverige",
+  "content_in_root": true,
+  "render_readme": true
 }

@@ -1,11 +1,13 @@
 {
   "domain": "ha_coop_sverige",
-  "name": "Coop Bonus",
-  "version": "1.0.0",
+  "name": "Coop Sverige",
+  "version": "1.1.0",
   "documentation": "https://github.com/Esspel/ha_coop_sverige",
   "issue_tracker": "https://github.com/Esspel/ha_coop_sverige/issues",
-  "requirements": [],
   "dependencies": [],
-  "codeowners": ["@esspel"],
-  "config_flow": true
+  "codeowners": [
+    "@esspel"
+  ],
+  "config_flow": true,
+  "iot_class": "cloud_polling"
 }

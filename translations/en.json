@@ -2,22 +2,22 @@
   "config": {
     "step": {
       "user": {
-        "description": "Enter your Coop session cookie",
+        "description": "Enter your Coop Sverige session cookie to connect your account.",
         "data": {
-          "session_cookie": "Your .AspNetCore.Cookies value",
-          "ocp_apim_subscription_key": "Subscription key (optional)"
+          "session_cookie": "Session Cookie (.AspNetCore.Cookies)",
+          "ocp_apim_subscription_key": "Subscription Key (optional)"
         },
         "data_description": {
-          "session_cookie": "Found in Chrome DevTools > Network > .AspNetCore.Cookies cookie"
+          "session_cookie": "Found in browser DevTools > Network > .AspNetCore.Cookies cookie from coop.se"
         }
       }
     },
     "error": {
       "invalid_cookie": "Invalid session cookie",
-      "cannot_connect": "Failed to connect"
+      "cannot_connect": "Failed to connect to Coop API"
     },
     "abort": {
-      "already_configured": "Coop Bonus is already configured"
+      "already_configured": "Coop Sverige is already configured"
     }
   },
   "entity": {
@@ -26,25 +26,25 @@
         "name": "Total Bonus (kr)"
       },
       "total_points": {
-        "name": "Total Bonus (poäng)"
+        "name": "Total Bonus (points)"
       },
       "monthly_bonus_kr": {
         "name": "Monthly Bonus (kr)"
       },
       "monthly_bonus_points": {
-        "name": "Monthly Bonus (poäng)"
+        "name": "Monthly Bonus (points)"
       },
       "member_prices_kr": {
-        "name": "Member Prices (kr)"
+        "name": "Member Prices Savings (kr)"
       },
       "member_prices_points": {
-        "name": "Member Prices (poäng)"
+        "name": "Member Prices (points)"
       },
       "extra_bonus_kr": {
         "name": "Extra Bonus (kr)"
       },
       "extra_bonus_points": {
-        "name": "Extra Bonus (poäng)"
+        "name": "Extra Bonus (points)"
       },
       "next_level_kr": {
         "name": "Next Level (kr)"
@@ -57,6 +57,15 @@
       },
       "member_id": {
         "name": "Member ID"
+      },
+      "active_personal_offers": {
+        "name": "Active Personal Offers"
+      },
+      "favorite_store": {
+        "name": "Favorite Store"
+      },
+      "shopping_lists_summary": {
+        "name": "Shopping Lists"
       }
     }
   }

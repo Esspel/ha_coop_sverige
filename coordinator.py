@@ -1,119 +1,107 @@
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Any
 
-import aiohttp
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import API_BASE, DEFAULT_SUB_KEY, TOKEN_URL
+from .client import CoopAPIClient, CoopAPIError, CoopAuthError
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class CoopBonusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Fetch Coop Bonus data using session cookie authentication."""
+class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+    """DataUpdateCoordinator for Coop Sverige."""
 
     def __init__(
         self,
         hass: HomeAssistant,
-        session: aiohttp.ClientSession,
-        session_cookie: str,
-        sub_key: str | None = None,
+        api_client: CoopAPIClient,
     ) -> None:
         super().__init__(
             hass,
             _LOGGER,
-            name="Coop Bonus",
-            update_interval=timedelta(hours=6),
+            name="Coop Sverige",
+            update_interval=timedelta(minutes=30),
         )
-        self.session = session
-        self._session_cookie = session_cookie
-        self._sub_key = sub_key or DEFAULT_SUB_KEY
-        self._access_token: str | None = None
-        self._token_expires: datetime = datetime.min
-        self.entry_id = None
-
-    async def _async_refresh_token(self) -> None:
-        """Get a new access token using the session cookie."""
-        # Check if current token is still valid (with 5 min buffer)
-        if self._access_token and datetime.now(tz=timezone.utc) < self._token_expires - timedelta(minutes=5):
-            return
-
-        try:
-            headers = {
-                "Cookie": f".AspNetCore.Cookies={self._session_cookie}",
-                "Accept": "application/json",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            }
-            async with self.session.get(
-                TOKEN_URL,
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=15),
-            ) as resp:
-                if resp.status != 200:
-                    text = await resp.text()
-                    raise UpdateFailed(f"Token fetch failed: {resp.status} — {text}")
-
-                result = await resp.json()
-                self._access_token = result["token"]
-
-                # Parse expiry from response
-                expires_str = result.get("expires")
-                if expires_str:
-                    # Parse ISO format: "2026-10-22T17:52:14.7016244+00:00"
-                    self._token_expires = datetime.fromisoformat(expires_str)
-                else:
-                    # Fallback: assume 1 hour
-                    self._token_expires = datetime.now(tz=timezone.utc) + timedelta(hours=1)
-
-                _LOGGER.debug("Token refreshed, expires at %s", self._token_expires)
-
-        except Exception as e:
-            raise UpdateFailed(f"Failed to get token: {e}") from e
-
-    async def _api_get(self, path: str) -> dict:
-        """Make a GET request to the Coop loyalty API."""
-        await self._async_refresh_token()
-        
-        headers = {
-            "Authorization": f"Bearer {self._access_token}",
-            "Ocp-Apim-Subscription-Key": self._sub_key,
-            "Accept": "application/json",
-        }
-        url = f"{API_BASE}{path}"
-        
-        try:
-            async with self.session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                if resp.status == 401:
-                    # Token might have expired between check and use
-                    await self._async_refresh_token()
-                    headers["Authorization"] = f"Bearer {self._access_token}"
-                    async with self.session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as retry_resp:
-                        if retry_resp.status != 200:
-                            text = await retry_resp.text()
-                            raise UpdateFailed(f"API error after retry {retry_resp.status}: {text}")
-                        return await retry_resp.json()
-                
-                if resp.status != 200:
-                    text = await resp.text()
-                    raise UpdateFailed(f"API error {resp.status}: {text}")
-                
-                return await resp.json()
-        
-        except Exception as e:
-            raise UpdateFailed(f"API request failed: {e}") from e
+        self.api_client = api_client
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch data from Coop Bonus API."""
+        """Fetch data from Coop APIs."""
+        # 1. Fetch core loyalty data
         try:
-            balance = await self._api_get("/account/points/balance?api-version=v3")
-            yearly = await self._api_get("/account/points/summary/yearly?api-version=v4")
+            balance = await self.api_client.get_loyalty_balance()
+            yearly = await self.api_client.get_loyalty_summary_yearly()
+        except CoopAuthError as e:
+            _LOGGER.error("Authentication failed: %s", e)
+            raise UpdateFailed(f"Auth failed: {e}") from e
+        except CoopAPIError as e:
+            raise UpdateFailed(f"Failed to fetch loyalty data: {e}") from e
         except Exception as e:
-            raise UpdateFailed(f"Failed to fetch Coop data: {e}") from e
+            raise UpdateFailed(f"Unexpected error fetching loyalty: {e}") from e
 
-        # Parse yearly response
-        point_groups = {}
+        # 2. Fetch shopping lists
+        shopping_lists: list[dict[str, Any]] = []
+        try:
+            raw_lists = await self.api_client.get_shopping_lists()
+            if isinstance(raw_lists, list):
+                shopping_lists = raw_lists
+            elif isinstance(raw_lists, dict):
+                shopping_lists = raw_lists.get("shoppingLists") or raw_lists.get("lists") or []
+        except Exception as e:
+            _LOGGER.warning("Failed to fetch shopping lists: %s", e)
+
+        # 3. Fetch personal offers
+        personal_offers: list[dict[str, Any]] = []
+        try:
+            raw_offers = await self.api_client.get_personal_offers()
+            if isinstance(raw_offers, list):
+                personal_offers = raw_offers
+            elif isinstance(raw_offers, dict):
+                personal_offers = (
+                    raw_offers.get("offers")
+                    or raw_offers.get("personalOffers")
+                    or raw_offers.get("items")
+                    or []
+                )
+        except Exception as e:
+            _LOGGER.warning("Failed to fetch personal offers: %s", e)
+
+        # 4. Fetch favorite stores
+        favorite_stores: list[dict[str, Any]] = []
+        primary_store_info: dict[str, Any] = {}
+        primary_store_offers: dict[str, Any] = {}
+        try:
+            raw_stores = await self.api_client.get_favorite_stores()
+            if isinstance(raw_stores, list):
+                favorite_stores = raw_stores
+            elif isinstance(raw_stores, dict):
+                favorite_stores = raw_stores.get("stores") or raw_stores.get("favoriteStores") or []
+
+            # If user has a favorite store, fetch detailed store info and campaigns
+            if favorite_stores:
+                first_store = favorite_stores[0]
+                ledger = (
+                    first_store.get("ledgerAccountNumber")
+                    or first_store.get("storeId")
+                    or first_store.get("id")
+                    or first_store.get("reskontranummer")
+                )
+                if ledger:
+                    try:
+                        primary_store_info = await self.api_client.get_store_info(ledger)
+                    except Exception as err:
+                        _LOGGER.warning("Failed to fetch store info for %s: %s", ledger, err)
+
+                    try:
+                        primary_store_offers = await self.api_client.get_sorting_groups(ledger)
+                    except Exception as err:
+                        _LOGGER.warning("Failed to fetch sorting groups for store %s: %s", ledger, err)
+        except Exception as e:
+            _LOGGER.warning("Failed to fetch favorite stores: %s", e)
+
+        # Parse yearly loyalty response
+        point_groups: dict[Any, dict[str, Any]] = {}
         for group in yearly.get("pointGroupings", []):
             gid = group.get("id")
             point_groups[gid] = {
@@ -125,15 +113,18 @@ class CoopBonusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Extract bonus progress info
         progress_info = yearly.get("bonusProgressInfo", "")
-        bonus_info = {}
-        
+        bonus_info: dict[str, Any] = {
+            "next_level_kr": 0.0,
+            "days_until_next_level": 0,
+        }
+
         if "kr till nästa nivå" in progress_info:
             try:
                 next_level_kr = progress_info.split("kr till nästa nivå")[0].split(": ")[-1].strip()
                 bonus_info["next_level_kr"] = float(next_level_kr.replace(".", "").replace(",", "."))
             except (ValueError, IndexError):
-                bonus_info["next_level_kr"] = 0
-        
+                bonus_info["next_level_kr"] = 0.0
+
         if "dagar kvar att samla" in progress_info:
             try:
                 days_left = progress_info.split("dagar kvar att samla")[0].split(": ")[-1].strip()
@@ -141,7 +132,24 @@ class CoopBonusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             except (ValueError, IndexError):
                 bonus_info["days_until_next_level"] = 0
 
-        # Build final data structure
+        # Parse active personal offers
+        active_offers = []
+        for offer in personal_offers:
+            status = offer.get("status")
+            # status: 1 = active / ready at cash register
+            if status in (1, "1", "Active", "active") or status is None:
+                active_offers.append(offer)
+
+        # Count total and pending shopping items
+        total_items_count = 0
+        unchecked_items_count = 0
+        for s_list in shopping_lists:
+            products = s_list.get("products") or []
+            total_items_count += len(products)
+            unchecked_items_count += sum(
+                1 for p in products if not (p.get("isChecked") or p.get("checked"))
+            )
+
         data = {
             "total_kr": yearly.get("monetaryEarnings", 0),
             "total_points": sum(g.get("points", 0) for g in yearly.get("pointGroupings", [])),
@@ -153,8 +161,21 @@ class CoopBonusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "extra_bonus_points": point_groups.get(2, {}).get("points", 0),
             "last_login": balance.get("lastLoginDate", ""),
             "member_id": balance.get("memberId", ""),
+            # Extended API Data
+            "shopping_lists": shopping_lists,
+            "total_shopping_items": total_items_count,
+            "unchecked_shopping_items": unchecked_items_count,
+            "personal_offers": personal_offers,
+            "active_personal_offers": active_offers,
+            "favorite_stores": favorite_stores,
+            "primary_store_info": primary_store_info,
+            "primary_store_offers": primary_store_offers,
             **bonus_info,
         }
 
-        _LOGGER.debug("Coop Bonus data updated: %s", data)
+        _LOGGER.debug("Coop Sverige data updated successfully")
         return data
+
+
+# Backwards compatibility alias
+CoopBonusCoordinator = CoopCoordinator

@@ -1,0 +1,72 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "description": "Ange din sessionscookie från Coop för att koppla ditt konto.",
+        "data": {
+          "session_cookie": "Sessionscookie (.AspNetCore.Cookies)",
+          "ocp_apim_subscription_key": "Subscription Key (valfritt)"
+        },
+        "data_description": {
+          "session_cookie": "Hittas i webbläsarens Utvecklarverktyg (F12) > Nätverk > kakan .AspNetCore.Cookies från coop.se"
+        }
+      }
+    },
+    "error": {
+      "invalid_cookie": "Ogiltig sessionscookie",
+      "cannot_connect": "Kunde inte ansluta till Coops API"
+    },
+    "abort": {
+      "already_configured": "Coop Sverige är redan konfigurerat"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "total_kr": {
+        "name": "Total bonus (kr)"
+      },
+      "total_points": {
+        "name": "Total bonus (poäng)"
+      },
+      "monthly_bonus_kr": {
+        "name": "Månadsbonus (kr)"
+      },
+      "monthly_bonus_points": {
+        "name": "Månadsbonus (poäng)"
+      },
+      "member_prices_kr": {
+        "name": "Medlemspriser (kr)"
+      },
+      "member_prices_points": {
+        "name": "Medlemspriser (poäng)"
+      },
+      "extra_bonus_kr": {
+        "name": "Extrabonus (kr)"
+      },
+      "extra_bonus_points": {
+        "name": "Extrabonus (poäng)"
+      },
+      "next_level_kr": {
+        "name": "Nästa nivå (kr)"
+      },
+      "days_until_next_level": {
+        "name": "Dagar till nästa nivå"
+      },
+      "last_login": {
+        "name": "Senaste inloggning"
+      },
+      "member_id": {
+        "name": "Medlems-ID"
+      },
+      "active_personal_offers": {
+        "name": "Aktiva personliga erbjudanden"
+      },
+      "favorite_store": {
+        "name": "Favoritbutik"
+      },
+      "shopping_lists_summary": {
+        "name": "Inköpslistor"
+      }
+    }
+  }
+}

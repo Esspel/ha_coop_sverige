@@ -1,0 +1,227 @@
+add_item:
+  name: Lägg till vara i inköpslista
+  description: Lägger till en ny vara i en Coop-inköpslista.
+  fields:
+    name:
+      name: Varunamn
+      description: Namn på varan som ska läggas till.
+      required: true
+      example: "Mjölk 1.5L"
+      selector:
+        text:
+    quantity:
+      name: Kvantitet
+      description: Antal eller mängd.
+      required: false
+      default: "1"
+      example: "2"
+      selector:
+        text:
+    unit:
+      name: Enhet
+      description: Måttenhet (t.ex. st, kg, l).
+      required: false
+      example: "st"
+      selector:
+        text:
+    placement:
+      name: Avdelning/placering
+      description: Butiksplacering eller avdelning (t.ex. Mejeri, Frukt & Grönt).
+      required: false
+      example: "Mejeri"
+      selector:
+        text:
+    list_id:
+      name: Inköpsliste-ID
+      description: ID för inköpslistan. Om tomt används första tillgängliga lista.
+      required: false
+      example: "3051572"
+      selector:
+        text:
+    entry_id:
+      name: Integrations-ID
+      description: Home Assistant config entry ID (valfritt vid enbart ett konto).
+      required: false
+      selector:
+        text:
+
+update_item:
+  name: Uppdatera vara i inköpslista
+  description: Uppdaterar status (avbockad), namn, mängd eller placering för en befintlig vara.
+  fields:
+    product_id:
+      name: Produkt-ID
+      description: Unikt ID för produkten i inköpslistan.
+      required: true
+      example: "123456"
+      selector:
+        text:
+    is_checked:
+      name: Avbockad
+      description: Sätt till sant för att bocka av varan, falskt för att avmarkera.
+      required: false
+      selector:
+        boolean:
+    name:
+      name: Nytt varunamn
+      description: Uppdaterat namn på varan.
+      required: false
+      example: "Ekologisk Mjölk"
+      selector:
+        text:
+    quantity:
+      name: Kvantitet
+      description: Uppdaterad kvantitet.
+      required: false
+      example: "3"
+      selector:
+        text:
+    unit:
+      name: Enhet
+      description: Uppdaterad enhet.
+      required: false
+      example: "st"
+      selector:
+        text:
+    placement:
+      name: Placering
+      description: Uppdaterad avdelning i butiken.
+      required: false
+      selector:
+        text:
+    list_id:
+      name: Inköpsliste-ID
+      description: ID för listan. Kan utelämnas om produkten kan lokaliseras automatiskt.
+      required: false
+      selector:
+        text:
+    entry_id:
+      name: Integrations-ID
+      description: Config entry ID (valfritt).
+      required: false
+      selector:
+        text:
+
+delete_item:
+  name: Ta bort vara från inköpslista
+  description: Raderar en vara från Coop-inköpslistan.
+  fields:
+    product_id:
+      name: Produkt-ID
+      description: Unikt ID för produkten som ska tas bort.
+      required: true
+      example: "123456"
+      selector:
+        text:
+    list_id:
+      name: Inköpsliste-ID
+      description: ID för listan. Kan utelämnas om produkten hittas automatiskt.
+      required: false
+      selector:
+        text:
+    entry_id:
+      name: Integrations-ID
+      description: Config entry ID (valfritt).
+      required: false
+      selector:
+        text:
+
+clear_completed:
+  name: Rensa avbockade varor
+  description: Tar bort alla varor som är avbockade (klara) från inköpslistan.
+  fields:
+    list_id:
+      name: Inköpsliste-ID
+      description: ID för listan som ska rensas. Om tomt används första tillgängliga lista.
+      required: false
+      selector:
+        text:
+    entry_id:
+      name: Integrations-ID
+      description: Config entry ID (valfritt).
+      required: false
+      selector:
+        text:
+
+create_shopping_list:
+  name: Skapa inköpslista
+  description: Skapar en ny tom inköpslista hos Coop.
+  fields:
+    name:
+      name: Listnamn
+      description: Namn på den nya listan.
+      required: true
+      example: "Helghandling"
+      selector:
+        text:
+    entry_id:
+      name: Integrations-ID
+      description: Config entry ID (valfritt).
+      required: false
+      selector:
+        text:
+
+delete_shopping_list:
+  name: Ta bort inköpslista
+  description: Tar bort en hel inköpslista hos Coop.
+  fields:
+    list_id:
+      name: Inköpsliste-ID
+      description: ID för listan som ska tas bort.
+      required: true
+      example: "3051572"
+      selector:
+        text:
+    entry_id:
+      name: Integrations-ID
+      description: Config entry ID (valfritt).
+      required: false
+      selector:
+        text:
+
+get_store_info:
+  name: Hämta butiksinformation
+  description: Hämtar öppettider, helgdagsavvikelser och serviceutbud för en butik.
+  fields:
+    store_id:
+      name: Butikens reskontranummer
+      description: Reskontranummer/ID för butiken. Om tomt används användarens favoritbutik.
+      required: false
+      example: "012345"
+      selector:
+        text:
+    entry_id:
+      name: Integrations-ID
+      description: Config entry ID (valfritt).
+      required: false
+      selector:
+        text:
+
+get_store_offers:
+  name: Hämta butikserbjudanden & kampanjer
+  description: Hämtar aktuella kampanjer, varugrupper och extrapriser för en butik.
+  fields:
+    store_id:
+      name: Butikens reskontranummer
+      description: Butikens reskontranummer. Om tomt används favoritbutiken.
+      required: false
+      example: "012345"
+      selector:
+        text:
+    entry_id:
+      name: Integrations-ID
+      description: Config entry ID (valfritt).
+      required: false
+      selector:
+        text:
+
+get_personal_offers:
+  name: Hämta personliga medlemserbjudanden
+  description: Hämtar alla aktiva personliga rabatter och erbjudanden kopplade till medlemskapet.
+  fields:
+    entry_id:
+      name: Integrations-ID
+      description: Config entry ID (valfritt).
+      required: false
+      selector:
+        text:
