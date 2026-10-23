@@ -1,13 +1,16 @@
-import logging
+"""DataUpdateCoordinator for Coop Sverige."""
+
 from datetime import timedelta
+import logging
+import re
 from typing import Any
 
-from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .client import CoopAPIClient, CoopAPIError, CoopAuthError
-from .const import CONF_STORE_LEDGER_ACCOUNT, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+from .const import CONF_SCAN_INTERVAL, CONF_STORE_LEDGER_ACCOUNT, DEFAULT_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,10 +24,10 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         api_client: CoopAPIClient,
         entry: ConfigEntry,
     ) -> None:
+        """Initialize the coordinator."""
         self.api_client = api_client
         self.config_entry = entry
 
-        # Läs av uppdateringsintervall från inställningar eller data
         interval_mins = (
             entry.options.get(CONF_SCAN_INTERVAL)
             or entry.data.get(CONF_SCAN_INTERVAL)
@@ -59,7 +62,12 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if isinstance(raw_lists, list):
                 shopping_lists = raw_lists
             elif isinstance(raw_lists, dict):
-                shopping_lists = raw_lists.get("shoppingLists") or raw_lists.get("lists") or []
+                shopping_lists = (
+                    raw_lists.get("shoppingLists")
+                    or raw_lists.get("lists")
+                    or raw_lists.get("items")
+                    or []
+                )
         except Exception as e:
             _LOGGER.warning("Failed to fetch shopping lists: %s", e)
 
@@ -92,21 +100,33 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         try:
             if manual_ledger:
+                manual_ledger_str = str(manual_ledger).strip()
                 try:
-                    primary_store_info = await self.api_client.get_store_info(manual_ledger)
-                    primary_store_offers = await self.api_client.get_sorting_groups(manual_ledger)
-                    store_name = primary_store_info.get("name", f"Butik {manual_ledger}")
-                    favorite_stores = [{"ledgerAccountNumber": manual_ledger, "name": store_name}]
+                    primary_store_info = await self.api_client.get_store_info(manual_ledger_str)
                 except Exception as err:
-                    _LOGGER.warning("Failed to fetch store info for manual ledger %s: %s", manual_ledger, err)
+                    _LOGGER.warning("Failed to fetch store info for manual ledger %s: %s", manual_ledger_str, err)
+                    primary_store_info = {
+                        "ledgerAccountNumber": manual_ledger_str,
+                        "name": f"Coop Butik ({manual_ledger_str})",
+                    }
+
+                try:
+                    primary_store_offers = await self.api_client.get_sorting_groups(manual_ledger_str)
+                except Exception as err:
+                    _LOGGER.warning("Failed to fetch sorting groups for manual ledger %s: %s", manual_ledger_str, err)
+
+                store_name = primary_store_info.get("name") or f"Coop Butik ({manual_ledger_str})"
+                favorite_stores = [{"ledgerAccountNumber": manual_ledger_str, "name": store_name}]
             else:
                 raw_stores = await self.api_client.get_favorite_stores()
                 if isinstance(raw_stores, list):
                     favorite_stores = raw_stores
                 elif isinstance(raw_stores, dict):
-                    favorite_stores = raw_stores.get("stores") or raw_stores.get("favoriteStores") or []
+                    favorite_stores = (
+                        raw_stores.get("stores") or raw_stores.get("favoriteStores") or []
+                    )
 
-                # Fallback to coordinates if no favorite store is set
+                # Fallback till position om ingen favoritbutik finns vald
                 if not favorite_stores and hasattr(self.hass.config, "latitude") and self.hass.config.latitude:
                     try:
                         nearby = await self.api_client.get_stores_by_coordinates(
@@ -119,7 +139,6 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     except Exception as err:
                         _LOGGER.debug("Could not fetch nearby stores: %s", err)
 
-                # Fetch full store details and campaigns for the first favorite store
                 if favorite_stores:
                     first_store = favorite_stores[0]
                     ledger = (
@@ -141,12 +160,32 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as e:
             _LOGGER.warning("Failed to fetch stores: %s", e)
 
-        # Parse yearly loyalty response
+        # Robust hantering av svarstyper
         yearly = yearly if isinstance(yearly, dict) else {}
         balance = balance if isinstance(balance, dict) else {}
         shopping_lists = shopping_lists if isinstance(shopping_lists, list) else []
         personal_offers = personal_offers if isinstance(personal_offers, list) else []
         favorite_stores = favorite_stores if isinstance(favorite_stores, list) else []
+
+        # Breddad sökning efter medlems-ID och senaste inloggning
+        account_obj = balance.get("accountInfo") or balance.get("profile") or balance
+        member_id = (
+            account_obj.get("memberId")
+            or account_obj.get("memberNumber")
+            or account_obj.get("cardId")
+            or account_obj.get("id")
+            or balance.get("memberId")
+            or balance.get("memberNumber")
+            or ""
+        )
+        last_login = (
+            account_obj.get("lastLoginDate")
+            or account_obj.get("lastLogin")
+            or account_obj.get("lastLoggedIn")
+            or balance.get("lastLoginDate")
+            or balance.get("lastLogin")
+            or ""
+        )
 
         point_groupings = yearly.get("pointGroupings") or []
         point_groups: dict[Any, dict[str, Any]] = {}
@@ -160,29 +199,32 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "type": group.get("type", ""),
                 }
 
-        # Extract bonus progress info
-        progress_info = yearly.get("bonusProgressInfo") or ""
+        # Flexibel regex-parsing för bonusProgressInfo
+        progress_info = yearly.get("bonusProgressInfo") or yearly.get("progressInfo") or ""
         bonus_info: dict[str, Any] = {
             "next_level_kr": 0.0,
             "days_until_next_level": 0,
         }
 
-        if isinstance(progress_info, str):
-            if "kr till nästa nivå" in progress_info:
+        if isinstance(progress_info, str) and progress_info:
+            kr_match = re.search(r"(\d+(?:[\.,]\d+)?)\s*kr", progress_info, re.IGNORECASE)
+            if kr_match:
                 try:
-                    next_level_kr = progress_info.split("kr till nästa nivå")[0].split(": ")[-1].strip()
-                    bonus_info["next_level_kr"] = float(next_level_kr.replace(".", "").replace(",", "."))
-                except (ValueError, IndexError):
-                    bonus_info["next_level_kr"] = 0.0
+                    bonus_info["next_level_kr"] = float(kr_match.group(1).replace(".", "").replace(",", "."))
+                except ValueError:
+                    pass
 
-            if "dagar kvar att samla" in progress_info:
+            days_match = re.search(r"(\d+)\s*dag", progress_info, re.IGNORECASE)
+            if days_match:
                 try:
-                    days_left = progress_info.split("dagar kvar att samla")[0].split(": ")[-1].strip()
-                    bonus_info["days_until_next_level"] = int(days_left)
-                except (ValueError, IndexError):
-                    bonus_info["days_until_next_level"] = 0
+                    bonus_info["days_until_next_level"] = int(days_match.group(1))
+                except ValueError:
+                    pass
+        elif isinstance(progress_info, dict):
+            bonus_info["next_level_kr"] = float(progress_info.get("amountToNextLevel", 0.0))
+            bonus_info["days_until_next_level"] = int(progress_info.get("daysLeft", 0))
 
-        # Parse active personal offers (status 1 or 3 = active)
+        # Räkna aktiva personliga erbjudanden
         active_offers = []
         for offer in personal_offers:
             if isinstance(offer, dict):
@@ -190,16 +232,19 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if status in (1, "1", 3, "3", "Active", "active") or status is None:
                     active_offers.append(offer)
 
-        # Count total and pending shopping items
+        # Beräkna antal varor i alla inköpslistor
         total_items_count = 0
         unchecked_items_count = 0
         for s_list in shopping_lists:
             if isinstance(s_list, dict):
-                products = s_list.get("products") or []
+                products = s_list.get("products") or s_list.get("items") or []
                 if isinstance(products, list):
                     total_items_count += len(products)
                     unchecked_items_count += sum(
-                        1 for p in products if isinstance(p, dict) and not (p.get("isChecked") or p.get("checked"))
+                        1
+                        for p in products
+                        if isinstance(p, dict)
+                        and not (p.get("isChecked") or p.get("checked"))
                     )
 
         data = {
@@ -211,9 +256,8 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "member_prices_points": point_groups.get(3, {}).get("points", 0),
             "extra_bonus_kr": point_groups.get(2, {}).get("monetary", 0),
             "extra_bonus_points": point_groups.get(2, {}).get("points", 0),
-            "last_login": balance.get("lastLoginDate", ""),
-            "member_id": balance.get("memberId", ""),
-            # Extended API Data
+            "last_login": last_login,
+            "member_id": member_id,
             "shopping_lists": shopping_lists,
             "total_shopping_items": total_items_count,
             "unchecked_shopping_items": unchecked_items_count,

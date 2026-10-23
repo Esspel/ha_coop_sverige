@@ -27,7 +27,7 @@ async def async_setup_entry(
 ) -> bool:
     """Set up Coop Sverige from a config entry."""
     session_cookie = entry.options.get(CONF_SESSION_COOKIE) or entry.data[CONF_SESSION_COOKIE]
-    sub_key = entry.options.get(CONF_SUB_KEY) or entry.data.get(CONF_SUB_KEY)
+    sub_key = entry.options.get(CONF_SUB_KEY) or entry.data.get(CONF_SUB_KEY) or DEFAULT_SUB_KEY
 
     client = CoopAPIClient(
         session=async_get_clientsession(hass),

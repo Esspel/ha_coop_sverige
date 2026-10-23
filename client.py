@@ -34,12 +34,28 @@ class CoopAPIClient:
         session_cookie: str,
         sub_key: str | None = None,
     ) -> None:
+        """Initialize the API client."""
         self.session = session
         self._session_cookie = session_cookie
-        # Säkerställ att den ALDRIG blir None eller tom sträng
-        self._sub_key = sub_key.strip() if (sub_key and sub_key.strip()) else DEFAULT_SUB_KEY
+        # Tvinga alltid fallback till DEFAULT_SUB_KEY om sub_key är None, tom eller bara blanksteg
+        self._sub_key = (
+            sub_key.strip()
+            if (sub_key and isinstance(sub_key, str) and sub_key.strip())
+            else DEFAULT_SUB_KEY
+        )
         self._access_token: str | None = None
         self._token_expires: datetime = datetime.min
+
+    def _get_headers(self, requires_auth: bool = True) -> dict[str, str]:
+        """Build request headers with mandatory subscription key."""
+        headers = {
+            "Ocp-Apim-Subscription-Key": self._sub_key,
+            "Accept": "application/json",
+            "User-Agent": "Coop/2.35.0 (SE.coop.coopsverige; build:23500; iOS 17.5.1) Alamofire/5.8.1",
+        }
+        if requires_auth and self._access_token:
+            headers["Authorization"] = f"Bearer {self._access_token}"
+        return headers
 
     async def _async_refresh_token(self) -> None:
         """Get a new access token using the session cookie."""
