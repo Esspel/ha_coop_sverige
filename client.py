@@ -179,18 +179,26 @@ class CoopAPIClient:
         self,
         shopping_list_id: str | int,
         name: str,
-        quantity: str | int | float = "1",
-        unit: str = "",
-        placement: str = "",
+        quantity: str | int | float | None = None,
+        unit: str | None = None,
+        placement: str | None = None,
     ) -> Any:
         """Add a new item to a shopping list."""
+        product: dict[str, Any] = {
+            "name": name,
+            "shoppingListID": str(shopping_list_id),
+        }
+        if quantity is not None:
+            product["quantity"] = str(quantity)
+        if unit is not None:
+            product["unit"] = unit
+        if placement is not None:
+            product["placement"] = placement
+
         action = {
             "actionType": 0,
             "shoppingListID": str(shopping_list_id),
-            "name": name,
-            "quantity": str(quantity) if quantity is not None else "1",
-            "unit": unit or "",
-            "placement": placement or "",
+            "products": [product],
         }
         return await self.execute_shopping_list_actions([action])
 
@@ -203,24 +211,31 @@ class CoopAPIClient:
         unit: str | None = None,
         placement: str | None = None,
         is_checked: bool | None = None,
+        external_ingredient_id: str | int | None = None,
     ) -> Any:
         """Update an existing item in a shopping list."""
-        action: dict[str, Any] = {
-            "actionType": 1,
+        product: dict[str, Any] = {
+            "id": int(product_id) if str(product_id).isdigit() else product_id,
             "shoppingListID": str(shopping_list_id),
-            "productID": str(product_id),
         }
         if name is not None:
-            action["name"] = name
+            product["name"] = name
         if quantity is not None:
-            action["quantity"] = str(quantity)
+            product["quantity"] = str(quantity)
         if unit is not None:
-            action["unit"] = unit
+            product["unit"] = unit
         if placement is not None:
-            action["placement"] = placement
+            product["placement"] = placement
         if is_checked is not None:
-            action["isChecked"] = bool(is_checked)
+            product["checked"] = bool(is_checked)  # API:et använder "checked" i POST-requesten
+        if external_ingredient_id is not None:
+            product["externalIngredientID"] = external_ingredient_id
 
+        action = {
+            "actionType": 1,
+            "shoppingListID": str(shopping_list_id),
+            "products": [product],
+        }
         return await self.execute_shopping_list_actions([action])
 
     async def delete_item_from_shopping_list(

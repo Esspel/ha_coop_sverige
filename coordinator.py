@@ -3,9 +3,11 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .client import CoopAPIClient, CoopAPIError, CoopAuthError
+from .const import CONF_STORE_LEDGER_ACCOUNT, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,14 +19,24 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self,
         hass: HomeAssistant,
         api_client: CoopAPIClient,
+        entry: ConfigEntry,
     ) -> None:
+        self.api_client = api_client
+        self.config_entry = entry
+
+        # Läs av uppdateringsintervall från inställningar eller data
+        interval_mins = (
+            entry.options.get(CONF_SCAN_INTERVAL)
+            or entry.data.get(CONF_SCAN_INTERVAL)
+            or DEFAULT_SCAN_INTERVAL
+        )
+
         super().__init__(
             hass,
             _LOGGER,
             name="Coop Sverige",
-            update_interval=timedelta(minutes=30),
+            update_interval=timedelta(minutes=int(interval_mins)),
         )
-        self.api_client = api_client
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from Coop APIs."""
@@ -59,7 +71,8 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 personal_offers = raw_offers
             elif isinstance(raw_offers, dict):
                 personal_offers = (
-                    raw_offers.get("offers")
+                    raw_offers.get("offerPropositions")
+                    or raw_offers.get("offers")
                     or raw_offers.get("personalOffers")
                     or raw_offers.get("items")
                     or []
@@ -67,51 +80,66 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as e:
             _LOGGER.warning("Failed to fetch personal offers: %s", e)
 
-        # 4. Fetch favorite stores or nearby stores via coordinates
+        # 4. Fetch favorite stores or manually configured store ledger account
         favorite_stores: list[dict[str, Any]] = []
         primary_store_info: dict[str, Any] = {}
         primary_store_offers: dict[str, Any] = {}
+
+        manual_ledger = (
+            self.config_entry.options.get(CONF_STORE_LEDGER_ACCOUNT)
+            or self.config_entry.data.get(CONF_STORE_LEDGER_ACCOUNT)
+        )
+
         try:
-            raw_stores = await self.api_client.get_favorite_stores()
-            if isinstance(raw_stores, list):
-                favorite_stores = raw_stores
-            elif isinstance(raw_stores, dict):
-                favorite_stores = raw_stores.get("stores") or raw_stores.get("favoriteStores") or []
-
-            # If no favorite store set in app, find closest store via Home Assistant coordinates
-            if not favorite_stores and hasattr(self.hass.config, "latitude") and self.hass.config.latitude:
+            if manual_ledger:
                 try:
-                    nearby = await self.api_client.get_stores_by_coordinates(
-                        self.hass.config.latitude, self.hass.config.longitude
-                    )
-                    if isinstance(nearby, list) and nearby:
-                        favorite_stores = nearby
-                    elif isinstance(nearby, dict):
-                        favorite_stores = nearby.get("stores") or nearby.get("items") or []
+                    primary_store_info = await self.api_client.get_store_info(manual_ledger)
+                    primary_store_offers = await self.api_client.get_sorting_groups(manual_ledger)
+                    store_name = primary_store_info.get("name", f"Butik {manual_ledger}")
+                    favorite_stores = [{"ledgerAccountNumber": manual_ledger, "name": store_name}]
                 except Exception as err:
-                    _LOGGER.debug("Could not fetch nearby stores: %s", err)
+                    _LOGGER.warning("Failed to fetch store info for manual ledger %s: %s", manual_ledger, err)
+            else:
+                raw_stores = await self.api_client.get_favorite_stores()
+                if isinstance(raw_stores, list):
+                    favorite_stores = raw_stores
+                elif isinstance(raw_stores, dict):
+                    favorite_stores = raw_stores.get("stores") or raw_stores.get("favoriteStores") or []
 
-            # If store found, fetch full store details, opening hours, holiday calendar and campaigns
-            if favorite_stores:
-                first_store = favorite_stores[0]
-                ledger = (
-                    first_store.get("ledgerAccountNumber")
-                    or first_store.get("storeId")
-                    or first_store.get("id")
-                    or first_store.get("reskontranummer")
-                )
-                if ledger:
+                # Fallback to coordinates if no favorite store is set
+                if not favorite_stores and hasattr(self.hass.config, "latitude") and self.hass.config.latitude:
                     try:
-                        primary_store_info = await self.api_client.get_store_info(ledger)
+                        nearby = await self.api_client.get_stores_by_coordinates(
+                            self.hass.config.latitude, self.hass.config.longitude
+                        )
+                        if isinstance(nearby, list) and nearby:
+                            favorite_stores = nearby
+                        elif isinstance(nearby, dict):
+                            favorite_stores = nearby.get("stores") or nearby.get("items") or []
                     except Exception as err:
-                        _LOGGER.warning("Failed to fetch store info for %s: %s", ledger, err)
+                        _LOGGER.debug("Could not fetch nearby stores: %s", err)
 
-                    try:
-                        primary_store_offers = await self.api_client.get_sorting_groups(ledger)
-                    except Exception as err:
-                        _LOGGER.warning("Failed to fetch sorting groups for store %s: %s", ledger, err)
+                # Fetch full store details and campaigns for the first favorite store
+                if favorite_stores:
+                    first_store = favorite_stores[0]
+                    ledger = (
+                        first_store.get("ledgerAccountNumber")
+                        or first_store.get("storeId")
+                        or first_store.get("id")
+                        or first_store.get("reskontranummer")
+                    )
+                    if ledger:
+                        try:
+                            primary_store_info = await self.api_client.get_store_info(ledger)
+                        except Exception as err:
+                            _LOGGER.warning("Failed to fetch store info for %s: %s", ledger, err)
+
+                        try:
+                            primary_store_offers = await self.api_client.get_sorting_groups(ledger)
+                        except Exception as err:
+                            _LOGGER.warning("Failed to fetch sorting groups for store %s: %s", ledger, err)
         except Exception as e:
-            _LOGGER.warning("Failed to fetch favorite stores: %s", e)
+            _LOGGER.warning("Failed to fetch stores: %s", e)
 
         # Parse yearly loyalty response
         yearly = yearly if isinstance(yearly, dict) else {}
@@ -154,13 +182,12 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 except (ValueError, IndexError):
                     bonus_info["days_until_next_level"] = 0
 
-        # Parse active personal offers
+        # Parse active personal offers (status 1 or 3 = active)
         active_offers = []
         for offer in personal_offers:
             if isinstance(offer, dict):
                 status = offer.get("status")
-                # status: 1 = active / ready at cash register, 4 = used
-                if status in (1, "1", "Active", "active") or status is None:
+                if status in (1, "1", 3, "3", "Active", "active") or status is None:
                     active_offers.append(offer)
 
         # Count total and pending shopping items

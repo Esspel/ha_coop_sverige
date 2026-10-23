@@ -40,7 +40,8 @@ def parse_store_deals(raw_data: Any) -> list[dict[str, Any]]:
         for c in campaigns:
             if not isinstance(c, dict):
                 continue
-            title = c.get("heading") or c.get("title") or c.get("name")
+            content = c.get("content") or {}
+            title = c.get("heading") or c.get("title") or c.get("name") or content.get("title")
             if not title:
                 continue
 
@@ -53,18 +54,19 @@ def parse_store_deals(raw_data: Any) -> list[dict[str, Any]]:
 
             # Cluster items (GTIN/EANs and products)
             articles = []
-            for item in c.get("clusterItems") or []:
+            for item in c.get("clusterInteriorOffers") or c.get("clusterItems") or []:
                 if isinstance(item, dict):
+                    item_content = item.get("content") or {}
                     vol_parts = []
-                    if item.get("netVolume"):
-                        vol_parts.append(str(item["netVolume"]))
-                    if item.get("netContentUnit"):
-                        vol_parts.append(str(item["netContentUnit"]))
+                    if item_content.get("weightVolume") or item.get("netVolume"):
+                        vol_parts.append(str(item_content.get("weightVolume") or item["netVolume"]))
+                    if item_content.get("netContentUnit") or item.get("netContentUnit"):
+                        vol_parts.append(str(item_content.get("netContentUnit") or item["netContentUnit"]))
                     articles.append({
-                        "ean": item.get("externalId"),
+                        "ean": item.get("externalId") or item_content.get("externalId"),
                         "volume": " ".join(vol_parts),
                         "campaign_id": item.get("campaignId") or item.get("id"),
-                        "image_url": item.get("imageUrl") or item.get("image"),
+                        "image_url": item_content.get("imageUrl") or item.get("image"),
                     })
 
             deals.append({
@@ -73,12 +75,13 @@ def parse_store_deals(raw_data: Any) -> list[dict[str, Any]]:
                 "unified_splash": splash,
                 "is_member_price": bool(price_info.get("isMemberPrice")),
                 "deal_type": price_info.get("dealType"),
-                "limit": price_info.get("dealOfferLimitText"),
+                "limit": price_info.get("dealOfferLimitText") or price_info.get("limit"),
                 "comparative_price": (
                     price_info.get("comparativePriceText")
                     or price_info.get("enrichedComparisonPrice")
+                    or content.get("comparativePriceText")
                 ),
-                "image_url": c.get("imageUrl") or c.get("image"),
+                "image_url": c.get("imageUrl") or content.get("imageUrl") or c.get("image"),
                 "articles": articles,
             })
 

@@ -13,7 +13,10 @@ from .const import (
     CONF_NAME,
     CONF_SESSION_COOKIE,
     CONF_SUB_KEY,
+    CONF_STORE_LEDGER_ACCOUNT,
+    CONF_SCAN_INTERVAL,
     DEFAULT_SUB_KEY,
+    DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     TOKEN_URL,
 )
@@ -21,24 +24,40 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-def _get_schema(default_cookie: str = "", default_sub_key: str = DEFAULT_SUB_KEY) -> vol.Schema:
+def _get_schema(
+    default_cookie: str = "", 
+    default_sub_key: str = DEFAULT_SUB_KEY,
+    default_store: str = "",
+    default_interval: int = DEFAULT_SCAN_INTERVAL,
+) -> vol.Schema:
     """Build config flow data schema using valid Home Assistant selectors."""
-    schema_fields: dict[Any, Any] = {}
-
-    if default_cookie:
-        schema_fields[vol.Required(CONF_SESSION_COOKIE, default=default_cookie)] = selector(
+    return vol.Schema({
+        vol.Required(CONF_SESSION_COOKIE, default=default_cookie): selector(
             {"text": {"type": "password"}}
-        )
-    else:
-        schema_fields[vol.Required(CONF_SESSION_COOKIE)] = selector(
-            {"text": {"type": "password"}}
-        )
+        ),
+        vol.Optional(CONF_SUB_KEY, default=default_sub_key): selector(
+            {"text": {"type": "text"}}
+        ),
+        vol.Optional(CONF_STORE_LEDGER_ACCOUNT, default=default_store): selector(
+            {"text": {"type": "text"}}
+        ),
+        vol.Optional(CONF_SCAN_INTERVAL, default=default_interval): selector(
+            {"number": {"min": 10, "max": 120, "step": 5, "unit_of_measurement": "minuter"}}
+        ),
+    })
 
-    schema_fields[vol.Optional(CONF_SUB_KEY, default=default_sub_key)] = selector(
-        {"text": {"type": "text"}}
-    )
 
-    return vol.Schema(schema_fields)
+async def _validate_cookie(hass, session_cookie: str) -> dict[str, Any]:
+    """Validate session cookie against Coop token endpoint."""
+    session = async_get_clientsession(hass)
+    headers = {
+        "Cookie": f".AspNetCore.Cookies={session_cookie}",
+        "Accept": "application/json",
+    }
+    async with session.get(TOKEN_URL, headers=headers, timeout=15) as resp:
+        if resp.status != 200:
+            raise ValueError("invalid_cookie")
+        return await resp.json()
 
 
 class CoopConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -52,83 +71,74 @@ class CoopConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             session_cookie = user_input[CONF_SESSION_COOKIE].strip()
             sub_key = user_input.get(CONF_SUB_KEY, DEFAULT_SUB_KEY).strip()
+            store_ledger = user_input.get(CONF_STORE_LEDGER_ACCOUNT, "").strip()
+            scan_interval = user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
-            # Validate by trying to fetch token
             try:
-                session = async_get_clientsession(self.hass)
-                headers = {
-                    "Cookie": f".AspNetCore.Cookies={session_cookie}",
-                    "Accept": "application/json",
-                }
-                async with session.get(
-                    TOKEN_URL,
-                    headers=headers,
-                    timeout=15,
-                ) as resp:
-                    if resp.status != 200:
-                        errors["base"] = "invalid_cookie"
-                        return self.async_show_form(
-                            step_id="user",
-                            data_schema=_get_schema(default_sub_key=sub_key),
-                            errors=errors,
-                        )
-
-                    result = await resp.json()
-                    email = result.get("email", "Okänd")
-                    name = f"Coop Sverige ({email})"
-
+                result = await _validate_cookie(self.hass, session_cookie)
+                email = result.get("email", "Okänd")
+                name = f"Coop Sverige ({email})"
+            except ValueError:
+                errors["base"] = "invalid_cookie"
             except Exception as e:
                 _LOGGER.error("Validation failed: %s", e)
                 errors["base"] = "cannot_connect"
-                return self.async_show_form(
-                    step_id="user",
-                    data_schema=_get_schema(default_sub_key=sub_key),
-                    errors=errors,
+
+            if not errors:
+                await self.async_set_unique_id(email)
+                self._abort_if_unique_id_configured()
+
+                return self.async_create_entry(
+                    title=name,
+                    data={
+                        CONF_SESSION_COOKIE: session_cookie,
+                        CONF_SUB_KEY: sub_key if sub_key != DEFAULT_SUB_KEY else None,
+                        CONF_STORE_LEDGER_ACCOUNT: store_ledger if store_ledger else None,
+                        CONF_SCAN_INTERVAL: scan_interval,
+                        CONF_EMAIL: email,
+                        CONF_NAME: name,
+                    },
                 )
 
-            await self.async_set_unique_id(email)
-            self._abort_if_unique_id_configured()
-
-            return self.async_create_entry(
-                title=name,
-                data={
-                    CONF_SESSION_COOKIE: session_cookie,
-                    CONF_SUB_KEY: sub_key if sub_key != DEFAULT_SUB_KEY else None,
-                    CONF_EMAIL: email,
-                    CONF_NAME: name,
-                },
-            )
-
-        return self.async_show_form(step_id="user", data_schema=_get_schema())
+        return self.async_show_form(step_id="user", data_schema=_get_schema(), errors=errors)
 
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
-        return CoopOptionsFlowHandler(config_entry)
+        return CoopOptionsFlowHandler()
 
 
 class CoopOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for Coop Sverige."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry | None = None) -> None:
-        """Initialize options flow."""
-        if config_entry is not None:
-            self._config_entry = config_entry
-
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+        errors: dict[str, str] = {}
 
-        entry = getattr(self, "config_entry", None) or getattr(self, "_config_entry", None)
-        cookie = ""
-        sub_key = DEFAULT_SUB_KEY
-        if entry:
-            cookie = entry.options.get(CONF_SESSION_COOKIE) or entry.data.get(CONF_SESSION_COOKIE, "")
-            sub_key = entry.options.get(CONF_SUB_KEY) or entry.data.get(CONF_SUB_KEY, DEFAULT_SUB_KEY)
+        if user_input is not None:
+            session_cookie = user_input[CONF_SESSION_COOKIE].strip()
+            
+            try:
+                await _validate_cookie(self.hass, session_cookie)
+                return self.async_create_entry(title="", data=user_input)
+            except ValueError:
+                errors["base"] = "invalid_cookie"
+            except Exception:
+                errors["base"] = "cannot_connect"
+
+        cookie = self.config_entry.options.get(CONF_SESSION_COOKIE) or self.config_entry.data.get(CONF_SESSION_COOKIE, "")
+        sub_key = self.config_entry.options.get(CONF_SUB_KEY) or self.config_entry.data.get(CONF_SUB_KEY, DEFAULT_SUB_KEY)
+        store_ledger = self.config_entry.options.get(CONF_STORE_LEDGER_ACCOUNT) or self.config_entry.data.get(CONF_STORE_LEDGER_ACCOUNT, "")
+        scan_interval = self.config_entry.options.get(CONF_SCAN_INTERVAL) or self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
         return self.async_show_form(
             step_id="init",
-            data_schema=_get_schema(default_cookie=cookie, default_sub_key=sub_key),
+            data_schema=_get_schema(
+                default_cookie=cookie, 
+                default_sub_key=sub_key,
+                default_store=store_ledger,
+                default_interval=int(scan_interval),
+            ),
+            errors=errors,
         )
 
 

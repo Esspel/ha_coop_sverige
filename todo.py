@@ -207,12 +207,28 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
             _LOGGER.error("Cannot update item without uid")
             return
 
+        # Hämta befintlig produktdata så vi inte tappar bort namn, enhet eller placering
+        list_data = self._get_list_data()
+        existing_product = {}
+        if list_data:
+            for p in list_data.get("products", []):
+                if str(p.get("id")) == str(item.uid):
+                    existing_product = p
+                    break
+
         is_checked = (item.status == TodoItemStatus.COMPLETED) if item.status is not None else None
+        
+        # Använd existerande namn om item.summary är tomt eller generiskt
+        product_name = item.summary if item.summary else existing_product.get("name", "Vara")
 
         await self.coordinator.api_client.update_item_in_shopping_list(
             shopping_list_id=self._list_id,
             product_id=item.uid,
-            name=item.summary,
+            name=product_name,
+            unit=existing_product.get("unit"),
+            quantity=existing_product.get("quantity"),
+            placement=existing_product.get("placement"),
+            external_ingredient_id=existing_product.get("externalIngredientID"),
             is_checked=is_checked,
         )
         await self.coordinator.async_request_refresh()
