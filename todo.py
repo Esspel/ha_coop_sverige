@@ -48,12 +48,10 @@ async def async_setup_entry(
             return raw
         return []
 
-    # 1. Tvinga alltid fram minst en entitet direkt så att plattformen registreras i HA
     raw_lists = _get_raw_lists()
     initial_entities: list[CoopTodoListEntity] = []
 
     if not raw_lists:
-        # Fallback-lista om kontot saknar listor vid start
         fallback_id = "default_fallback"
         existing_list_ids.add(fallback_id)
         initial_entities.append(
@@ -76,10 +74,8 @@ async def async_setup_entry(
                     CoopTodoListEntity(coordinator, entry.entry_id, lid)
                 )
 
-    _LOGGER.info("Registering %d initial Coop todo entities", len(initial_entities))
     async_add_entities(initial_entities)
 
-    # 2. Lyssna på om nya listor dyker upp senare
     @callback
     def _sync_new_entities() -> None:
         current_lists = _get_raw_lists()
@@ -102,7 +98,6 @@ async def async_setup_entry(
                 )
 
         if new_entities:
-            _LOGGER.info("Adding %d dynamic Coop todo entities", len(new_entities))
             async_add_entities(new_entities)
 
     entry.async_on_unload(coordinator.async_add_listener(_sync_new_entities))
@@ -142,6 +137,39 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
             manufacturer="Coop Sverige",
             model="Coop Medlem & Butik",
         )
+
+    async def _ensure_real_list_id(self) -> str:
+        """Ensure a real shopping list exists on Coop if currently using fallback."""
+        if self._list_id != "default_fallback":
+            return self._list_id
+
+        try:
+            res = await self.coordinator.api_client.create_shopping_list("Inköpslista")
+            if isinstance(res, dict):
+                new_id = str(
+                    res.get("id")
+                    or res.get("shoppingListID")
+                    or res.get("shoppingListId")
+                    or res.get("listId")
+                    or ""
+                )
+                if new_id:
+                    self._list_id = new_id
+                    return new_id
+
+            # Hämta färska listor om svaret inte gav ID direkt
+            await self.coordinator.async_request_refresh()
+            raw = self.coordinator.data.get("shopping_lists") or []
+            if isinstance(raw, list) and raw:
+                first = raw[0]
+                new_id = str(first.get("id") or first.get("shoppingListID") or first.get("shoppingListId") or "")
+                if new_id:
+                    self._list_id = new_id
+                    return new_id
+        except Exception as e:
+            _LOGGER.error("Could not create fallback shopping list on Coop: %s", e)
+
+        return ""
 
     def _get_list_data(self) -> dict[str, Any] | None:
         """Find matching list data."""
@@ -226,20 +254,10 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
 
     async def async_create_todo_item(self, item: TodoItem) -> None:
         """Create item on Coop list."""
-        target_list_id = self._list_id
-
-        if target_list_id == "default_fallback":
-            try:
-                res = await self.coordinator.api_client.create_shopping_list("Inköpslista")
-                if isinstance(res, dict):
-                    target_list_id = str(
-                        res.get("id")
-                        or res.get("shoppingListID")
-                        or res.get("shoppingListId")
-                        or ""
-                    )
-            except Exception as e:
-                _LOGGER.error("Error creating fallback list on Coop: %s", e)
+        target_list_id = await self._ensure_real_list_id()
+        if not target_list_id:
+            _LOGGER.error("Cannot create item: No valid shopping list ID available")
+            return
 
         raw_text = item.summary.strip()
         quantity = "1"
@@ -261,7 +279,7 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
                 name = num_match.group(2).strip()
 
         await self.coordinator.api_client.add_item_to_shopping_list(
-            shopping_list_id=target_list_id if target_list_id != "default_fallback" else "",
+            shopping_list_id=target_list_id,
             name=name,
             quantity=quantity,
             unit=unit,
@@ -272,6 +290,10 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
     async def async_update_todo_item(self, item: TodoItem) -> None:
         """Update item state or text."""
         if not item.uid:
+            return
+
+        target_list_id = await self._ensure_real_list_id()
+        if not target_list_id:
             return
 
         list_data = self._get_list_data()
@@ -286,7 +308,7 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         product_name = item.summary if item.summary else existing_product.get("name", "Vara")
 
         await self.coordinator.api_client.update_item_in_shopping_list(
-            shopping_list_id=self._list_id if self._list_id != "default_fallback" else "",
+            shopping_list_id=target_list_id,
             product_id=item.uid,
             name=product_name,
             unit=existing_product.get("unit"),
@@ -302,8 +324,12 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         if not uids:
             return
 
+        target_list_id = await self._ensure_real_list_id()
+        if not target_list_id:
+            return
+
         await self.coordinator.api_client.delete_item_from_shopping_list(
-            shopping_list_id=self._list_id if self._list_id != "default_fallback" else "",
+            shopping_list_id=target_list_id,
             product_id=uids,
         )
         await self.coordinator.async_request_refresh()
