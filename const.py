@@ -9,7 +9,7 @@ CONF_NAME = "name"
 CONF_SUB_KEY = "ocp_apim_subscription_key"
 CONF_STORE_LEDGER_ACCOUNT = "store_ledger_account"
 CONF_SCAN_INTERVAL = "scan_interval"
-DEFAULT_SCAN_INTERVAL = 30  Minutes
+DEFAULT_SCAN_INTERVAL = 30
 
 API_BASE = "https://external.api.coop.se/loyalty"
 TOKEN_URL = "https://www.coop.se/api/spa/token"
