@@ -211,7 +211,7 @@ action:
 
 ## 📡 API-Översikt
 Integrationen ansluter mot Coops officiella API-tjänster:
-- **Autentisering**: `https://login.coop.se/connect/token` (Bearer JWT via sessionscookie).
+- **Autentisering**: `https://www.coop.se/api/spa/token` (Bearer JWT via sessionscookie).
 - **Inköpslistor**: `https://proxy.api.coop.se/digital/shoppinglist` (`api-version=v2`).
 - **Personliga rabatter**: `https://external.api.coop.se/digital/personaloffers/offers` (`api-version=v2`).
 - **Butiker & Öppettider**: `https://proxy.api.coop.se/external/store/stores/{id}` (`api-version=v3`).

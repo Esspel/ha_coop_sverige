@@ -15,6 +15,7 @@ from .const import (
     CONF_SUB_KEY,
     DEFAULT_SUB_KEY,
     DOMAIN,
+    TOKEN_URL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -60,7 +61,7 @@ class CoopConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "Accept": "application/json",
                 }
                 async with session.get(
-                    "https://www.coop.se/api/spa/token",
+                    TOKEN_URL,
                     headers=headers,
                     timeout=15,
                 ) as resp:

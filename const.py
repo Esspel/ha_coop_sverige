@@ -9,7 +9,7 @@ CONF_NAME = "name"
 CONF_SUB_KEY = "ocp_apim_subscription_key"
 
 API_BASE = "https://external.api.coop.se/loyalty"
-TOKEN_URL = "https://login.coop.se/connect/token"
+TOKEN_URL = "https://www.coop.se/api/spa/token"
 CLIENT_ID = "coopse_prod"
 
 # Default subscription key discovered from network traffic

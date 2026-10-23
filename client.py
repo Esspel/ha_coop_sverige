@@ -68,11 +68,19 @@ class CoopAPIClient:
                     raise CoopAPIError(f"Token fetch failed: {resp.status} — {text}")
 
                 result = await resp.json()
-                self._access_token = result["token"]
+                self._access_token = result.get("token") or result.get("access_token")
+                if not self._access_token:
+                    raise CoopAPIError(f"No token found in response: {result}")
 
-                expires_str = result.get("expires")
+                expires_str = result.get("expires") or result.get("expires_in")
                 if expires_str:
-                    self._token_expires = datetime.fromisoformat(expires_str)
+                    if isinstance(expires_str, (int, float)):
+                        self._token_expires = datetime.now(tz=timezone.utc) + timedelta(seconds=expires_str)
+                    else:
+                        try:
+                            self._token_expires = datetime.fromisoformat(str(expires_str).replace("Z", "+00:00"))
+                        except Exception:
+                            self._token_expires = datetime.now(tz=timezone.utc) + timedelta(hours=1)
                 else:
                     self._token_expires = datetime.now(tz=timezone.utc) + timedelta(hours=1)
 
