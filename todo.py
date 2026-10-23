@@ -161,7 +161,8 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         name = raw_text
 
         # 1. Parse leading quantity and unit (e.g. '2 st Mjölk', '500 g Köttfärs', '1.5 kg Äpplen')
-        units_pattern = "|".join(re.escape(u) for u in VALID_UNITS)
+        sorted_units = sorted(VALID_UNITS, key=len, reverse=True)
+        units_pattern = "|".join(re.escape(u) for u in sorted_units)
         match = re.match(rf"^(\d+(?:[.,]\d+)?)\s*({units_pattern})\s+(.+)$", raw_text, re.IGNORECASE)
         if match:
             quantity = match.group(1).replace(",", ".")

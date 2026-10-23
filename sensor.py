@@ -38,7 +38,7 @@ def parse_store_deals(raw_data: Any) -> list[dict[str, Any]]:
     for g in groups:
         campaigns = g.get("campaigns") or g.get("offers") or g.get("items") or [g]
         for c in campaigns:
-            if isinstance(c, dict):
+            if not isinstance(c, dict):
                 continue
             title = c.get("heading") or c.get("title") or c.get("name")
             if not title:
