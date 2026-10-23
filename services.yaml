@@ -238,8 +238,8 @@ get_store_info:
   description: Hämtar öppettider, helgdagsavvikelser och serviceutbud för en butik.
   fields:
     store_id:
-      name: Butikens reskontranummer
-      description: Reskontranummer/ID för butiken. Om tomt används användarens favoritbutik.
+      name: Butiksnummer
+      description: Om tomt används användarens favoritbutik.
       required: false
       example: "012345"
       selector:
@@ -256,8 +256,8 @@ get_store_offers:
   description: Hämtar aktuella kampanjer, varugrupper och extrapriser för en butik.
   fields:
     store_id:
-      name: Butikens reskontranummer
-      description: Butikens reskontranummer. Om tomt används favoritbutiken.
+      name: Butiksnummer
+      description: Om tomt används favoritbutiken.
       required: false
       example: "012345"
       selector:
