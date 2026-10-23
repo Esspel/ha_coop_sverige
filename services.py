@@ -191,8 +191,8 @@ def _resolve_store_id(coordinator: CoopCoordinator, store_id: str | None) -> str
 async def async_setup_services(hass: HomeAssistant) -> None:
     """Set up all Coop Sverige actions/services."""
 
-    async def handle_add_item(call: ServiceCall) -> None:
-        """Add item to a shopping list."""
+    async def handle_add_item(call: ServiceCall) -> ServiceResponse:
+        """Add item to a shopping list and return status."""
         coordinator = _get_coordinator(hass, call.data.get(ATTR_ENTRY_ID))
         list_id = _resolve_list_id(coordinator, call.data.get(ATTR_LIST_ID))
         name = call.data[ATTR_NAME]
@@ -208,9 +208,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             placement=placement,
         )
         await coordinator.async_request_refresh()
+        return {"success": True, "list_id": list_id, "name": name}
 
-    async def handle_update_item(call: ServiceCall) -> None:
-        """Update an item in a shopping list."""
+    async def handle_update_item(call: ServiceCall) -> ServiceResponse:
+        """Update an item in a shopping list and return status."""
         coordinator = _get_coordinator(hass, call.data.get(ATTR_ENTRY_ID))
         product_id = call.data[ATTR_PRODUCT_ID]
         list_id = _resolve_list_id(coordinator, call.data.get(ATTR_LIST_ID), product_id=product_id)
@@ -230,9 +231,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             is_checked=call.data.get(ATTR_IS_CHECKED),
         )
         await coordinator.async_request_refresh()
+        return {"success": True, "list_id": list_id, "product_id": product_id}
 
-    async def handle_delete_item(call: ServiceCall) -> None:
-        """Delete an item from a shopping list."""
+    async def handle_delete_item(call: ServiceCall) -> ServiceResponse:
+        """Delete an item from a shopping list and return status."""
         coordinator = _get_coordinator(hass, call.data.get(ATTR_ENTRY_ID))
         product_id = call.data[ATTR_PRODUCT_ID]
         list_id = _resolve_list_id(coordinator, call.data.get(ATTR_LIST_ID), product_id=product_id)
@@ -242,9 +244,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             product_id=product_id,
         )
         await coordinator.async_request_refresh()
+        return {"success": True, "list_id": list_id, "product_id": product_id}
 
-    async def handle_clear_completed(call: ServiceCall) -> None:
-        """Clear all checked items from a shopping list."""
+    async def handle_clear_completed(call: ServiceCall) -> ServiceResponse:
+        """Clear all checked items from a shopping list and return count."""
         coordinator = _get_coordinator(hass, call.data.get(ATTR_ENTRY_ID))
         list_id = _resolve_list_id(coordinator, call.data.get(ATTR_LIST_ID))
 
@@ -269,21 +272,43 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             )
             await coordinator.async_request_refresh()
 
-    async def handle_create_list(call: ServiceCall) -> None:
-        """Create a new shopping list."""
+        return {"success": True, "list_id": list_id, "cleared_count": len(checked_ids)}
+
+    async def handle_create_list(call: ServiceCall) -> ServiceResponse:
+        """Create a new shopping list and return its ID."""
         coordinator = _get_coordinator(hass, call.data.get(ATTR_ENTRY_ID))
         name = call.data[ATTR_NAME]
 
-        await coordinator.api_client.create_shopping_list(name)
+        api_response = await coordinator.api_client.create_shopping_list(name)
         await coordinator.async_request_refresh()
 
-    async def handle_delete_list(call: ServiceCall) -> None:
-        """Delete a shopping list."""
+        new_list_id = None
+        if isinstance(api_response, dict):
+            new_list_id = (
+                api_response.get("id")
+                or api_response.get("shoppingListID")
+                or api_response.get("listId")
+            )
+
+        if not new_list_id:
+            shopping_lists = coordinator.data.get("shopping_lists") or []
+            if isinstance(shopping_lists, dict):
+                shopping_lists = shopping_lists.get("shoppingLists") or shopping_lists.get("lists") or []
+            for s in shopping_lists:
+                if isinstance(s, dict) and s.get("name") == name:
+                    new_list_id = s.get("id") or s.get("shoppingListID")
+                    break
+
+        return {"success": True, "list_id": new_list_id, "name": name}
+
+    async def handle_delete_list(call: ServiceCall) -> ServiceResponse:
+        """Delete a shopping list and return status."""
         coordinator = _get_coordinator(hass, call.data.get(ATTR_ENTRY_ID))
         list_id = call.data[ATTR_LIST_ID]
 
         await coordinator.api_client.delete_shopping_list(list_id)
         await coordinator.async_request_refresh()
+        return {"success": True, "list_id": list_id}
 
     async def handle_get_store_info(call: ServiceCall) -> ServiceResponse:
         """Get store details, opening hours, services and holiday calendar."""
@@ -308,27 +333,27 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         offers = await coordinator.api_client.get_personal_offers()
         return {"offers": offers}
 
-    # Register actions
-    hass.services.async_register(
-        DOMAIN, SERVICE_ADD_ITEM, handle_add_item, schema=SCHEMA_ADD_ITEM
-    )
-    hass.services.async_register(
-        DOMAIN, SERVICE_UPDATE_ITEM, handle_update_item, schema=SCHEMA_UPDATE_ITEM
-    )
-    hass.services.async_register(
-        DOMAIN, SERVICE_DELETE_ITEM, handle_delete_item, schema=SCHEMA_DELETE_ITEM
-    )
-    hass.services.async_register(
-        DOMAIN, SERVICE_CLEAR_COMPLETED, handle_clear_completed, schema=SCHEMA_CLEAR_COMPLETED
-    )
-    hass.services.async_register(
-        DOMAIN, SERVICE_CREATE_SHOPPING_LIST, handle_create_list, schema=SCHEMA_CREATE_LIST
-    )
-    hass.services.async_register(
-        DOMAIN, SERVICE_DELETE_SHOPPING_LIST, handle_delete_list, schema=SCHEMA_DELETE_LIST
-    )
-
+    # Register all actions with response support enabled
     resp_kwargs = {"supports_response": OPTIONAL_RESPONSE} if OPTIONAL_RESPONSE is not None else {}
+
+    hass.services.async_register(
+        DOMAIN, SERVICE_ADD_ITEM, handle_add_item, schema=SCHEMA_ADD_ITEM, **resp_kwargs
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_UPDATE_ITEM, handle_update_item, schema=SCHEMA_UPDATE_ITEM, **resp_kwargs
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_DELETE_ITEM, handle_delete_item, schema=SCHEMA_DELETE_ITEM, **resp_kwargs
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_CLEAR_COMPLETED, handle_clear_completed, schema=SCHEMA_CLEAR_COMPLETED, **resp_kwargs
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_CREATE_SHOPPING_LIST, handle_create_list, schema=SCHEMA_CREATE_LIST, **resp_kwargs
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_DELETE_SHOPPING_LIST, handle_delete_list, schema=SCHEMA_DELETE_LIST, **resp_kwargs
+    )
     hass.services.async_register(
         DOMAIN, SERVICE_GET_STORE_INFO, handle_get_store_info, schema=SCHEMA_STORE, **resp_kwargs
     )

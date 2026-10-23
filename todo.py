@@ -36,13 +36,23 @@ async def async_setup_entry(
     @callback
     def _sync_entities() -> None:
         """Add new todo entities when shopping lists are discovered."""
-        raw_lists = coordinator.data.get("shopping_lists") or []
+        data = coordinator.data or {}
+        raw_lists = data.get("shopping_lists") or []
         if isinstance(raw_lists, dict):
-            raw_lists = raw_lists.get("shoppingLists") or raw_lists.get("lists") or []
+            raw_lists = (
+                raw_lists.get("shoppingLists")
+                or raw_lists.get("lists")
+                or raw_lists.get("items")
+                or []
+            )
+        elif not isinstance(raw_lists, list):
+            raw_lists = []
 
         new_entities: list[CoopTodoListEntity] = []
         for s_list in raw_lists:
-            list_id = str(s_list.get("id") or s_list.get("shoppingListID") or "")
+            if not isinstance(s_list, dict):
+                continue
+            list_id = str(s_list.get("id") or s_list.get("shoppingListID") or s_list.get("listId") or "")
             if list_id and list_id not in existing_list_ids:
                 existing_list_ids.add(list_id)
                 new_entities.append(
