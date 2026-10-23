@@ -279,51 +279,63 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         coordinator = _get_coordinator(hass, call.data.get(ATTR_ENTRY_ID))
         name = call.data[ATTR_NAME]
 
-        # 1. Skapa listan via API:et
+        new_list_id = None
+
+        # 1. Skapa listan via API:et och fånga svarsdata direkt
         try:
-            await coordinator.api_client.create_shopping_list(name)
+            api_response = await coordinator.api_client.create_shopping_list(name)
+            _LOGGER.debug("Create shopping list API response: %s", api_response)
+            if isinstance(api_response, dict):
+                new_list_id = (
+                    api_response.get("id")
+                    or api_response.get("shoppingListID")
+                    or api_response.get("shoppingListId")
+                    or api_response.get("listId")
+                )
+            elif isinstance(api_response, (str, int)):
+                new_list_id = str(api_response)
         except Exception as err:
             _LOGGER.warning("Failed to create shopping list on Coop: %s", err)
 
-        # 2. Hämta direkt färska listor från API:et för att hitta det nya ID:t
-        new_list_id = None
-        try:
-            raw_lists = await coordinator.api_client.get_shopping_lists()
-            if isinstance(raw_lists, dict):
-                shopping_lists = (
-                    raw_lists.get("shoppingLists")
-                    or raw_lists.get("lists")
-                    or raw_lists.get("items")
-                    or []
-                )
-            elif isinstance(raw_lists, list):
-                shopping_lists = raw_lists
-            else:
-                shopping_lists = []
-
-            # Leta efter listan som matchar det angivna namnet
-            for s in shopping_lists:
-                if isinstance(s, dict) and str(s.get("name")).strip().lower() == name.strip().lower():
-                    new_list_id = (
-                        s.get("id")
-                        or s.get("shoppingListID")
-                        or s.get("shoppingListId")
-                        or s.get("listId")
+        # 2. Om ID inte returnerades direkt i POST-svaret, gör en sökning bland listorna
+        if not new_list_id:
+            try:
+                raw_lists = await coordinator.api_client.get_shopping_lists()
+                if isinstance(raw_lists, dict):
+                    shopping_lists = (
+                        raw_lists.get("shoppingLists")
+                        or raw_lists.get("lists")
+                        or raw_lists.get("items")
+                        or []
                     )
-                    break
+                elif isinstance(raw_lists, list):
+                    shopping_lists = raw_lists
+                else:
+                    shopping_lists = []
 
-            # Fallback: Om exakt namnmatchning misslyckades men listor finns, ta den översta
-            if not new_list_id and shopping_lists:
-                first = shopping_lists[0]
-                if isinstance(first, dict):
-                    new_list_id = (
-                        first.get("id")
-                        or first.get("shoppingListID")
-                        or first.get("shoppingListId")
-                        or first.get("listId")
-                    )
-        except Exception as err:
-            _LOGGER.warning("Could not fetch fresh lists after creation: %s", err)
+                # Leta efter exakt namnmatchning
+                for s in shopping_lists:
+                    if isinstance(s, dict) and str(s.get("name")).strip().lower() == name.strip().lower():
+                        new_list_id = (
+                            s.get("id")
+                            or s.get("shoppingListID")
+                            or s.get("shoppingListId")
+                            or s.get("listId")
+                        )
+                        break
+
+                # Om fortfarande None, ta den senast tillagda listan (sista i listan)
+                if not new_list_id and shopping_lists:
+                    last_item = shopping_lists[-1]
+                    if isinstance(last_item, dict):
+                        new_list_id = (
+                            last_item.get("id")
+                            or last_item.get("shoppingListID")
+                            or last_item.get("shoppingListId")
+                            or last_item.get("listId")
+                        )
+            except Exception as err:
+                _LOGGER.warning("Could not fetch fresh lists after creation: %s", err)
 
         await coordinator.async_request_refresh()
         return {"success": True, "list_id": new_list_id, "name": name}
