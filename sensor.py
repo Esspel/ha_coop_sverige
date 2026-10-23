@@ -58,7 +58,7 @@ def parse_store_deals(raw_data: Any) -> list[dict[str, Any]]:
                 "eans": c.get("eans") or [c.get("ean")] if c.get("ean") else [],
             })
 
-    return deals    articles = []
+    return deals
             for item in c.get("clusterItems") or []:
                 if isinstance(item, dict):
                     vol_parts = []
