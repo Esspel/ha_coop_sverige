@@ -20,6 +20,18 @@
       "already_configured": "Coop Sverige är redan konfigurerat"
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Coop Sverige Inställningar",
+        "description": "Uppdatera din sessionscookie eller subscription key.",
+        "data": {
+          "session_cookie": "Sessionscookie (.AspNetCore.Cookies)",
+          "ocp_apim_subscription_key": "Subscription Key (valfritt)"
+        }
+      }
+    }
+  },
   "entity": {
     "sensor": {
       "total_kr": {
