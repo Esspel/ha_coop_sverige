@@ -35,9 +35,11 @@ async def async_setup_entry(
         sub_key=sub_key,
     )
 
+    # Skicka med entry=entry för att ställbart intervall och manuellt butiksnummer ska fungera
     coordinator = CoopCoordinator(
         hass=hass,
         api_client=client,
+        entry=entry,
     )
 
     # Fetch initial data
