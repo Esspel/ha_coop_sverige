@@ -226,6 +226,8 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         }
 
         _LOGGER.debug("Coop Sverige data updated successfully")
+        _LOGGER.debug("RAW balance response: %s", balance)
+        _LOGGER.debug("RAW yearly response: %s", yearly)
         return data
 
 

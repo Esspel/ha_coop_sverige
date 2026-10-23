@@ -280,25 +280,47 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         name = call.data[ATTR_NAME]
 
         api_response = await coordinator.api_client.create_shopping_list(name)
-        await coordinator.async_request_refresh()
 
         new_list_id = None
         if isinstance(api_response, dict):
             new_list_id = (
                 api_response.get("id")
                 or api_response.get("shoppingListID")
+                or api_response.get("shoppingListId")
                 or api_response.get("listId")
             )
+        elif isinstance(api_response, (str, int)):
+            new_list_id = str(api_response)
 
+        # Om ID inte fanns direkt i svaret, gör ett direkt API-anrop för att hämta listorna
         if not new_list_id:
-            shopping_lists = coordinator.data.get("shopping_lists") or []
-            if isinstance(shopping_lists, dict):
-                shopping_lists = shopping_lists.get("shoppingLists") or shopping_lists.get("lists") or []
-            for s in shopping_lists:
-                if isinstance(s, dict) and s.get("name") == name:
-                    new_list_id = s.get("id") or s.get("shoppingListID")
-                    break
+            try:
+                raw_lists = await coordinator.api_client.get_shopping_lists()
+                if isinstance(raw_lists, dict):
+                    shopping_lists = (
+                        raw_lists.get("shoppingLists")
+                        or raw_lists.get("lists")
+                        or raw_lists.get("items")
+                        or []
+                    )
+                elif isinstance(raw_lists, list):
+                    shopping_lists = raw_lists
+                else:
+                    shopping_lists = []
 
+                for s in shopping_lists:
+                    if isinstance(s, dict) and str(s.get("name")).strip().lower() == name.strip().lower():
+                        new_list_id = (
+                            s.get("id")
+                            or s.get("shoppingListID")
+                            or s.get("shoppingListId")
+                            or s.get("listId")
+                        )
+                        break
+            except Exception as err:
+                _LOGGER.warning("Could not fetch fresh lists after creation: %s", err)
+
+        await coordinator.async_request_refresh()
         return {"success": True, "list_id": new_list_id, "name": name}
 
     async def handle_delete_list(call: ServiceCall) -> ServiceResponse:
