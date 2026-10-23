@@ -7,7 +7,7 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, selector
+from homeassistant.helpers.selector import selector
 
 from .const import (
     CONF_EMAIL,
@@ -93,18 +93,10 @@ def _get_schema():
     return vol.Schema(
         {
             vol.Required(CONF_SESSION_COOKIE): selector(
-                TextSelectorConfig(
-                    type="password",
-                    label="Session Cookie (.AspNetCore.Cookies)",
-                    placeholder="Paste your .AspNetCore.Cookies value here",
-                )
+                {"type": "password", "label": "Session Cookie (.AspNetCore.Cookies)", "placeholder": "Paste your .AspNetCore.Cookies value here"}
             ),
             vol.Optional(CONF_SUB_KEY, default=DEFAULT_SUB_KEY): selector(
-                TextSelectorConfig(
-                    type="text",
-                    label="Subscription Key (optional)",
-                    placeholder="3becf0ce306f41a1ae94077c16798187",
-                )
+                {"type": "text", "label": "Subscription Key (optional)", "placeholder": "3becf0ce306f41a1ae94077c16798187"}
             ),
         }
     )
