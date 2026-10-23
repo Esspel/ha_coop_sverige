@@ -1,0 +1,9 @@
+{
+  "domain": "ha_coop_sverige",
+  "name": "Home assistant Coop Sverige",
+  "version": "1.0.0",
+  "documentation": "https://github.com/Esspel/ha_coop_sverige",
+  "requirements": [],
+  "dependencies": [],
+  "codeowners": ["@esspel"]
+}
