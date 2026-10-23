@@ -12,6 +12,11 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
+
+try:
+    from homeassistant.helpers.device_registry import DeviceEntryType
+except ImportError:
+    DeviceEntryType = None
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -33,7 +38,7 @@ def parse_store_deals(raw_data: Any) -> list[dict[str, Any]]:
     for g in groups:
         campaigns = g.get("campaigns") or g.get("offers") or g.get("items") or [g]
         for c in campaigns:
-            if not isinstance(c, dict):
+            if isinstance(c, dict):
                 continue
             title = c.get("heading") or c.get("title") or c.get("name")
             if not title:
@@ -47,7 +52,13 @@ def parse_store_deals(raw_data: Any) -> list[dict[str, Any]]:
             price_display = f"{val} {unit} {tag}".strip() if val else str(price_info.get("price", ""))
 
             # Cluster items (GTIN/EANs and products)
-            articles = []
+            deals.append({
+                "title": title,
+                "price_display": price_display,
+                "eans": c.get("eans") or [c.get("ean")] if c.get("ean") else [],
+            })
+
+    return deals    articles = []
             for item in c.get("clusterItems") or []:
                 if isinstance(item, dict):
                     vol_parts = []
@@ -95,7 +106,6 @@ async def async_setup_entry(
             key="total_kr",
             name="Total Bonus (kr)",
             icon="mdi:cash-multiple",
-            device_class=SensorDeviceClass.MONEY,
             state_class=SensorStateClass.TOTAL,
             native_unit_of_measurement="kr",
         ),
@@ -114,7 +124,6 @@ async def async_setup_entry(
             key="monthly_bonus_kr",
             name="Månadsbonus (kr)",
             icon="mdi:calendar-month",
-            device_class=SensorDeviceClass.MONEY,
             state_class=SensorStateClass.TOTAL,
             native_unit_of_measurement="kr",
         ),
@@ -133,7 +142,6 @@ async def async_setup_entry(
             key="member_prices_kr",
             name="Medlemspriser (kr)",
             icon="mdi:tag",
-            device_class=SensorDeviceClass.MONEY,
             state_class=SensorStateClass.TOTAL,
             native_unit_of_measurement="kr",
         ),
@@ -152,7 +160,6 @@ async def async_setup_entry(
             key="extra_bonus_kr",
             name="Extrabonus (kr)",
             icon="mdi:fire",
-            device_class=SensorDeviceClass.MONEY,
             state_class=SensorStateClass.TOTAL,
             native_unit_of_measurement="kr",
         ),
@@ -171,7 +178,6 @@ async def async_setup_entry(
             key="next_level_kr",
             name="Nästa nivå (kr)",
             icon="mdi:trending-up",
-            device_class=SensorDeviceClass.MONEY,
             state_class=SensorStateClass.TOTAL,
             native_unit_of_measurement="kr",
         ),
@@ -190,9 +196,6 @@ async def async_setup_entry(
             key="last_login",
             name="Senaste inloggning",
             icon="mdi:login",
-            device_class=None,
-            state_class=None,
-            native_unit_of_measurement=None,
             is_text=True,
         ),
         CoopBonusSensor(
@@ -201,9 +204,6 @@ async def async_setup_entry(
             key="member_id",
             name="Medlems-ID",
             icon="mdi:card-account-details",
-            device_class=None,
-            state_class=None,
-            native_unit_of_measurement=None,
             is_text=True,
         ),
         # Extended API Sensors
@@ -262,9 +262,12 @@ class CoopBonusSensor(CoopBaseSensor):
         self._attr_unique_id = f"{entry_id}_{key}"
         self._attr_name = name
         self._attr_icon = icon
-        self._attr_device_class = device_class
-        self._attr_state_class = state_class
-        self._attr_native_unit_of_measurement = native_unit_of_measurement
+        if device_class:
+            self._attr_device_class = device_class
+        if state_class:
+            self._attr_state_class = state_class
+        if native_unit_of_measurement:
+            self._attr_native_unit_of_measurement = native_unit_of_measurement
 
     @property
     def native_value(self) -> Any:
@@ -464,6 +467,33 @@ class CoopFavoriteStoreSensor(CoopBaseSensor):
 
         return {k: v for k, v in attrs.items() if v is not None}
 
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information linking to the Coop Store device."""
+        info = self._get_store_info()
+        fav = self._get_fav_store_summary()
+        ledger = (
+            info.get("ledgerAccountNumber")
+            or fav.get("ledgerAccountNumber")
+            or fav.get("storeId")
+            or fav.get("id")
+        )
+        if ledger:
+            store_name = info.get("name") or fav.get("name") or "Coop Butik"
+            web_url = info.get("url") or info.get("webUrl") or "https://www.coop.se"
+            dev_info = DeviceInfo(
+                identifiers={(DOMAIN, f"store_{ledger}")},
+                name=f"Coop {store_name}",
+                manufacturer="Coop Sverige",
+                model="Butik & Öppettider",
+                via_device=(DOMAIN, self._entry_id),
+                configuration_url=web_url,
+            )
+            if DeviceEntryType is not None:
+                dev_info["entry_type"] = DeviceEntryType.SERVICE
+            return dev_info
+        return super().device_info
+
 
 class CoopStoreDealsSensor(CoopBaseSensor):
     """Sensor showing active store deals, unifiedSplash pricing and GTIN/EAN barcodes."""
@@ -500,6 +530,34 @@ class CoopStoreDealsSensor(CoopBaseSensor):
             "total_deals_count": len(deals),
             "deals": deals[:30],  # Top 30 deals to maintain HA state size limits
         }
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information linking to the Coop Store device."""
+        store_info = self.coordinator.data.get("primary_store_info") or {}
+        favs = self.coordinator.data.get("favorite_stores") or []
+        first_store = favs[0] if isinstance(favs, list) and favs else {}
+        ledger = (
+            store_info.get("ledgerAccountNumber")
+            or first_store.get("ledgerAccountNumber")
+            or first_store.get("storeId")
+            or first_store.get("id")
+        )
+        if ledger:
+            store_name = store_info.get("name") or first_store.get("name") or "Coop Butik"
+            web_url = store_info.get("url") or store_info.get("webUrl") or "https://www.coop.se"
+            dev_info = DeviceInfo(
+                identifiers={(DOMAIN, f"store_{ledger}")},
+                name=f"Coop {store_name}",
+                manufacturer="Coop Sverige",
+                model="Butik & Öppettider",
+                via_device=(DOMAIN, self._entry_id),
+                configuration_url=web_url,
+            )
+            if DeviceEntryType is not None:
+                dev_info["entry_type"] = DeviceEntryType.SERVICE
+            return dev_info
+        return super().device_info
 
 
 class CoopShoppingListsSummarySensor(CoopBaseSensor):

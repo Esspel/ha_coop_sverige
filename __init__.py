@@ -3,6 +3,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 
@@ -45,6 +46,41 @@ async def async_setup_entry(
     # Store coordinator for access
     hass.data[DOMAIN][entry.entry_id] = coordinator
     entry.runtime_data = coordinator
+
+    # Explicitly register member device in Home Assistant Device Registry
+    dev_reg = dr.async_get(hass)
+    dev_reg.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, entry.entry_id)},
+        name=entry.title or "Coop Sverige",
+        manufacturer="Coop Sverige",
+        model="Medlem & Bonus",
+        entry_type=dr.DeviceEntryType.SERVICE,
+        configuration_url="https://www.coop.se",
+    )
+
+    # If store info is available, register store device
+    store_info = coordinator.data.get("primary_store_info") or {}
+    favs = coordinator.data.get("favorite_stores") or []
+    first_store = favs[0] if isinstance(favs, list) and favs else {}
+    store_ledger = (
+        store_info.get("ledgerAccountNumber")
+        or first_store.get("ledgerAccountNumber")
+        or first_store.get("storeId")
+        or first_store.get("id")
+    )
+    if store_ledger:
+        store_name = store_info.get("name") or first_store.get("name") or "Coop Butik"
+        dev_reg.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            identifiers={(DOMAIN, f"store_{store_ledger}")},
+            name=f"Coop {store_name}",
+            manufacturer="Coop Sverige",
+            model="Butik & Öppettider",
+            entry_type=dr.DeviceEntryType.SERVICE,
+            via_device=(DOMAIN, entry.entry_id),
+            configuration_url=store_info.get("url") or store_info.get("webUrl") or "https://www.coop.se",
+        )
 
     # Forward to platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
