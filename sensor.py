@@ -52,13 +52,7 @@ def parse_store_deals(raw_data: Any) -> list[dict[str, Any]]:
             price_display = f"{val} {unit} {tag}".strip() if val else str(price_info.get("price", ""))
 
             # Cluster items (GTIN/EANs and products)
-            deals.append({
-                "title": title,
-                "price_display": price_display,
-                "eans": c.get("eans") or [c.get("ean")] if c.get("ean") else [],
-            })
-
-    return deals
+            articles = []
             for item in c.get("clusterItems") or []:
                 if isinstance(item, dict):
                     vol_parts = []
@@ -87,6 +81,7 @@ def parse_store_deals(raw_data: Any) -> list[dict[str, Any]]:
                 "image_url": c.get("imageUrl") or c.get("image"),
                 "articles": articles,
             })
+
     return deals
 
 
