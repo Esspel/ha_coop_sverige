@@ -33,52 +33,79 @@ async def async_setup_entry(
     coordinator: CoopCoordinator = entry.runtime_data
     existing_list_ids: set[str] = set()
 
-    @callback
-    def _sync_entities() -> None:
-        """Add new todo entities when shopping lists are discovered."""
-        data = coordinator.data or {}
-        raw_lists = data.get("shopping_lists") or []
-
-        if isinstance(raw_lists, dict):
-            raw_lists = (
-                raw_lists.get("shoppingLists")
-                or raw_lists.get("lists")
-                or raw_lists.get("items")
+    def _get_raw_lists() -> list[dict[str, Any]]:
+        if not coordinator.data:
+            return []
+        raw = coordinator.data.get("shopping_lists") or []
+        if isinstance(raw, dict):
+            return (
+                raw.get("shoppingLists")
+                or raw.get("lists")
+                or raw.get("items")
                 or []
             )
-        elif not isinstance(raw_lists, list):
-            raw_lists = []
+        if isinstance(raw, list):
+            return raw
+        return []
 
-        new_entities: list[CoopTodoListEntity] = []
-        
-        # Om inga listor finns alls i kontot, skapa en standard-fallback-lista
-        if not raw_lists and not existing_list_ids:
-            raw_lists = [{"id": "default_fallback", "name": "Inköpslista", "products": []}]
+    # 1. Tvinga alltid fram minst en entitet direkt så att plattformen registreras i HA
+    raw_lists = _get_raw_lists()
+    initial_entities: list[CoopTodoListEntity] = []
 
+    if not raw_lists:
+        # Fallback-lista om kontot saknar listor vid start
+        fallback_id = "default_fallback"
+        existing_list_ids.add(fallback_id)
+        initial_entities.append(
+            CoopTodoListEntity(coordinator, entry.entry_id, fallback_id)
+        )
+    else:
         for s_list in raw_lists:
             if not isinstance(s_list, dict):
                 continue
-            
-            list_id = str(
+            lid = str(
                 s_list.get("id")
                 or s_list.get("shoppingListID")
                 or s_list.get("shoppingListId")
                 or s_list.get("listId")
                 or ""
             ).strip()
+            if lid and lid not in existing_list_ids:
+                existing_list_ids.add(lid)
+                initial_entities.append(
+                    CoopTodoListEntity(coordinator, entry.entry_id, lid)
+                )
 
-            if list_id and list_id not in existing_list_ids:
-                existing_list_ids.add(list_id)
+    _LOGGER.info("Registering %d initial Coop todo entities", len(initial_entities))
+    async_add_entities(initial_entities)
+
+    # 2. Lyssna på om nya listor dyker upp senare
+    @callback
+    def _sync_new_entities() -> None:
+        current_lists = _get_raw_lists()
+        new_entities: list[CoopTodoListEntity] = []
+
+        for s_list in current_lists:
+            if not isinstance(s_list, dict):
+                continue
+            lid = str(
+                s_list.get("id")
+                or s_list.get("shoppingListID")
+                or s_list.get("shoppingListId")
+                or s_list.get("listId")
+                or ""
+            ).strip()
+            if lid and lid not in existing_list_ids:
+                existing_list_ids.add(lid)
                 new_entities.append(
-                    CoopTodoListEntity(coordinator, entry.entry_id, list_id)
+                    CoopTodoListEntity(coordinator, entry.entry_id, lid)
                 )
 
         if new_entities:
+            _LOGGER.info("Adding %d dynamic Coop todo entities", len(new_entities))
             async_add_entities(new_entities)
 
-    # Initial registration
-    _sync_entities()
-    entry.async_on_unload(coordinator.async_add_listener(_sync_entities))
+    entry.async_on_unload(coordinator.async_add_listener(_sync_new_entities))
 
 
 class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
@@ -117,17 +144,21 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         )
 
     def _get_list_data(self) -> dict[str, Any] | None:
-        """Find the matching shopping list data from coordinator."""
+        """Find matching list data."""
         if not self.coordinator.data:
             return {"id": self._list_id, "name": "Inköpslista", "products": []}
-            
-        shopping_lists = self.coordinator.data.get("shopping_lists") or []
-        if isinstance(shopping_lists, dict):
+
+        raw = self.coordinator.data.get("shopping_lists") or []
+        shopping_lists = []
+        if isinstance(raw, dict):
             shopping_lists = (
-                shopping_lists.get("shoppingLists")
-                or shopping_lists.get("lists")
+                raw.get("shoppingLists")
+                or raw.get("lists")
+                or raw.get("items")
                 or []
             )
+        elif isinstance(raw, list):
+            shopping_lists = raw
 
         for s_list in shopping_lists:
             if not isinstance(s_list, dict):
@@ -142,7 +173,6 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
             if lid == self._list_id:
                 return s_list
 
-        # Om fallback-listan används men Coop skapat riktiga listor sedan dess
         if self._list_id == "default_fallback" and shopping_lists:
             return shopping_lists[0]
 
@@ -157,7 +187,7 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
 
     @property
     def todo_items(self) -> list[TodoItem] | None:
-        """Return the items in this to-do list."""
+        """Return current items."""
         list_data = self._get_list_data()
         if not list_data:
             return []
@@ -195,23 +225,21 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         return items
 
     async def async_create_todo_item(self, item: TodoItem) -> None:
-        """Create a new shopping item, creating list on Coop if using fallback."""
+        """Create item on Coop list."""
         target_list_id = self._list_id
-        
-        # Om vi kör på fallback-listan och den inte finns på Coop, skapa den först
+
         if target_list_id == "default_fallback":
             try:
                 res = await self.coordinator.api_client.create_shopping_list("Inköpslista")
                 if isinstance(res, dict):
-                    target_list_id = res.get("id") or res.get("shoppingListID") or res.get("shoppingListId") or ""
-                if not target_list_id:
-                    # Hämta nyskapad lista
-                    await self.coordinator.async_request_refresh()
-                    lists = self.coordinator.data.get("shopping_lists", [])
-                    if lists:
-                        target_list_id = str(lists[0].get("id") or lists[0].get("shoppingListID") or "")
+                    target_list_id = str(
+                        res.get("id")
+                        or res.get("shoppingListID")
+                        or res.get("shoppingListId")
+                        or ""
+                    )
             except Exception as e:
-                _LOGGER.error("Could not auto-create fallback shopping list on Coop: %s", e)
+                _LOGGER.error("Error creating fallback list on Coop: %s", e)
 
         raw_text = item.summary.strip()
         quantity = "1"
@@ -242,7 +270,7 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         await self.coordinator.async_request_refresh()
 
     async def async_update_todo_item(self, item: TodoItem) -> None:
-        """Update an existing shopping item."""
+        """Update item state or text."""
         if not item.uid:
             return
 
@@ -270,7 +298,7 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         await self.coordinator.async_request_refresh()
 
     async def async_delete_todo_items(self, uids: list[str]) -> None:
-        """Delete items from the shopping list."""
+        """Remove items from list."""
         if not uids:
             return
 
@@ -282,7 +310,7 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return extra attributes for the shopping list."""
+        """Extra state info."""
         list_data = self._get_list_data()
         if not list_data:
             return {}
@@ -293,8 +321,6 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
 
         return {
             "list_id": self._list_id,
-            "created": list_data.get("created"),
-            "updated": list_data.get("updated"),
             "total_items": len(products),
             "unchecked_items": unchecked_count,
             "checked_items": checked_count,
