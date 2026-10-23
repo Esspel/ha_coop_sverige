@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import aiohttp
@@ -37,14 +37,14 @@ class CoopBonusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_refresh_token(self) -> None:
         """Get a new access token using the session cookie."""
         # Check if current token is still valid (with 5 min buffer)
-        if self._access_token and datetime.now() < self._token_expires - timedelta(minutes=5):
+        if self._access_token and datetime.now(tz=timezone.utc) < self._token_expires - timedelta(minutes=5):
             return
 
         try:
             headers = {
                 "Cookie": f".AspNetCore.Cookies={self._session_cookie}",
                 "Accept": "application/json",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WinRT; x64)",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             }
             async with self.session.get(
                 TOKEN_URL,
@@ -54,21 +54,21 @@ class CoopBonusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if resp.status != 200:
                     text = await resp.text()
                     raise UpdateFailed(f"Token fetch failed: {resp.status} — {text}")
-                
+
                 result = await resp.json()
                 self._access_token = result["token"]
-                
+
                 # Parse expiry from response
                 expires_str = result.get("expires")
                 if expires_str:
                     # Parse ISO format: "2026-10-22T17:52:14.7016244+00:00"
-                    self._token_expires = datetime.fromisoformat(expires_str.replace('Z', '+00:00'))
+                    self._token_expires = datetime.fromisoformat(expires_str)
                 else:
                     # Fallback: assume 1 hour
-                    self._token_expires = datetime.now() + timedelta(hours=1)
-                
+                    self._token_expires = datetime.now(tz=timezone.utc) + timedelta(hours=1)
+
                 _LOGGER.debug("Token refreshed, expires at %s", self._token_expires)
-        
+
         except Exception as e:
             raise UpdateFailed(f"Failed to get token: {e}") from e
 
