@@ -2,11 +2,12 @@ import logging
 from typing import Any
 
 import aiohttp
+import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.selector import selector
+from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, selector
 
 from .const import (
     CONF_EMAIL,
@@ -89,19 +90,21 @@ class CoopBonusOptionsFlowHandler(config_entries.OptionsFlow):
 
 
 def _get_schema():
-    return [
-        selector.TextSelector(
-            selector.TextSelectorConfig(
-                type="password",
-                label="Session Cookie (.AspNetCore.Cookies)",
-                placeholder="Paste your .AspNetCore.Cookies value here",
-            )
-        ),
-        selector.TextSelector(
-            selector.TextSelectorConfig(
-                type="text",
-                label="Subscription Key (optional)",
-                placeholder="3becf0ce306f41a1ae94077c16798187",
-            )
-        ),
-    ]
+    return vol.Schema(
+        {
+            vol.Required(CONF_SESSION_COOKIE): selector(
+                TextSelectorConfig(
+                    type="password",
+                    label="Session Cookie (.AspNetCore.Cookies)",
+                    placeholder="Paste your .AspNetCore.Cookies value here",
+                )
+            ),
+            vol.Optional(CONF_SUB_KEY, default=DEFAULT_SUB_KEY): selector(
+                TextSelectorConfig(
+                    type="text",
+                    label="Subscription Key (optional)",
+                    placeholder="3becf0ce306f41a1ae94077c16798187",
+                )
+            ),
+        }
+    )
