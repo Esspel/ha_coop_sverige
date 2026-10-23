@@ -36,7 +36,8 @@ class CoopAPIClient:
     ) -> None:
         self.session = session
         self._session_cookie = session_cookie
-        self._sub_key = sub_key or DEFAULT_SUB_KEY
+        # Säkerställ att den ALDRIG blir None eller tom sträng
+        self._sub_key = sub_key.strip() if (sub_key and sub_key.strip()) else DEFAULT_SUB_KEY
         self._access_token: str | None = None
         self._token_expires: datetime = datetime.min
 

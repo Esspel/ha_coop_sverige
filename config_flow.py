@@ -24,19 +24,38 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-def _get_schema(
-    default_cookie: str = "", 
+def _get_user_schema(
+    default_cookie: str = "",
     default_sub_key: str = DEFAULT_SUB_KEY,
     default_store: str = "",
     default_interval: int = DEFAULT_SCAN_INTERVAL,
 ) -> vol.Schema:
-    """Build config flow data schema using valid Home Assistant selectors."""
+    """Schema for initial setup."""
     return vol.Schema({
         vol.Required(CONF_SESSION_COOKIE, default=default_cookie): selector(
             {"text": {"type": "password"}}
         ),
         vol.Optional(CONF_SUB_KEY, default=default_sub_key): selector(
             {"text": {"type": "text"}}
+        ),
+        vol.Optional(CONF_STORE_LEDGER_ACCOUNT, default=default_store): selector(
+            {"text": {"type": "text"}}
+        ),
+        vol.Optional(CONF_SCAN_INTERVAL, default=default_interval): selector(
+            {"number": {"min": 10, "max": 120, "step": 5, "unit_of_measurement": "minuter"}}
+        ),
+    })
+
+
+def _get_options_schema(
+    default_cookie: str = "",
+    default_store: str = "",
+    default_interval: int = DEFAULT_SCAN_INTERVAL,
+) -> vol.Schema:
+    """Schema for options flow ( hides subscription key from user )."""
+    return vol.Schema({
+        vol.Required(CONF_SESSION_COOKIE, default=default_cookie): selector(
+            {"text": {"type": "password"}}
         ),
         vol.Optional(CONF_STORE_LEDGER_ACCOUNT, default=default_store): selector(
             {"text": {"type": "text"}}
@@ -70,7 +89,7 @@ class CoopConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             session_cookie = user_input[CONF_SESSION_COOKIE].strip()
-            sub_key = user_input.get(CONF_SUB_KEY, DEFAULT_SUB_KEY).strip()
+            sub_key = user_input.get(CONF_SUB_KEY, "").strip() or DEFAULT_SUB_KEY
             store_ledger = user_input.get(CONF_STORE_LEDGER_ACCOUNT, "").strip()
             scan_interval = user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
@@ -92,7 +111,7 @@ class CoopConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     title=name,
                     data={
                         CONF_SESSION_COOKIE: session_cookie,
-                        CONF_SUB_KEY: sub_key if sub_key != DEFAULT_SUB_KEY else None,
+                        CONF_SUB_KEY: sub_key,
                         CONF_STORE_LEDGER_ACCOUNT: store_ledger if store_ledger else None,
                         CONF_SCAN_INTERVAL: scan_interval,
                         CONF_EMAIL: email,
@@ -100,7 +119,7 @@ class CoopConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     },
                 )
 
-        return self.async_show_form(step_id="user", data_schema=_get_schema(), errors=errors)
+        return self.async_show_form(step_id="user", data_schema=_get_user_schema(), errors=errors)
 
     @staticmethod
     @callback
@@ -119,22 +138,30 @@ class CoopOptionsFlowHandler(config_entries.OptionsFlow):
             
             try:
                 await _validate_cookie(self.hass, session_cookie)
-                return self.async_create_entry(title="", data=user_input)
+                # Behåll den befintliga sub_key i options-datan så den inte försvinner
+                sub_key = (
+                    self.config_entry.options.get(CONF_SUB_KEY)
+                    or self.config_entry.data.get(CONF_SUB_KEY)
+                    or DEFAULT_SUB_KEY
+                )
+                options_data = {
+                    **user_input,
+                    CONF_SUB_KEY: sub_key,
+                }
+                return self.async_create_entry(title="", data=options_data)
             except ValueError:
                 errors["base"] = "invalid_cookie"
             except Exception:
                 errors["base"] = "cannot_connect"
 
         cookie = self.config_entry.options.get(CONF_SESSION_COOKIE) or self.config_entry.data.get(CONF_SESSION_COOKIE, "")
-        sub_key = self.config_entry.options.get(CONF_SUB_KEY) or self.config_entry.data.get(CONF_SUB_KEY, DEFAULT_SUB_KEY)
         store_ledger = self.config_entry.options.get(CONF_STORE_LEDGER_ACCOUNT) or self.config_entry.data.get(CONF_STORE_LEDGER_ACCOUNT, "")
         scan_interval = self.config_entry.options.get(CONF_SCAN_INTERVAL) or self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
         return self.async_show_form(
             step_id="init",
-            data_schema=_get_schema(
-                default_cookie=cookie, 
-                default_sub_key=sub_key,
+            data_schema=_get_options_schema(
+                default_cookie=cookie,
                 default_store=store_ledger,
                 default_interval=int(scan_interval),
             ),

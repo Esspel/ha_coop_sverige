@@ -56,9 +56,9 @@ async def async_setup_entry(
         identifiers={(DOMAIN, entry.entry_id)},
         name=entry.title or "Coop Sverige",
         manufacturer="Coop Sverige",
-        model="Medlem & Bonus",
+        model="Unofficial",
         entry_type=dr.DeviceEntryType.SERVICE,
-        configuration_url="https://www.coop.se",
+        configuration_url="https://github.com/Esspel/ha_coop_sverige",
     )
 
     # If store info is available, register store device
@@ -78,7 +78,7 @@ async def async_setup_entry(
             identifiers={(DOMAIN, f"store_{store_ledger}")},
             name=f"Coop {store_name}",
             manufacturer="Coop Sverige",
-            model="Butik & Öppettider",
+            model="Unofficial",
             entry_type=dr.DeviceEntryType.SERVICE,
             via_device=(DOMAIN, entry.entry_id),
             configuration_url=store_info.get("url") or store_info.get("webUrl") or "https://www.coop.se",
