@@ -3,6 +3,7 @@
   "name": "Home Assistant Coop Sverige",
   "version": "1.0.0",
   "documentation": "https://github.com/Esspel/ha_coop_sverige",
+  "issue_tracker": "https://github.com/Esspel/ha_coop_sverige/issues",
   "requirements": [],
   "dependencies": [],
   "codeowners": ["@esspel"],

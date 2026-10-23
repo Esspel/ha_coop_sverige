@@ -1,0 +1,63 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "description": "Enter your Coop session cookie",
+        "data": {
+          "session_cookie": "Your .AspNetCore.Cookies value",
+          "ocp_apim_subscription_key": "Subscription key (optional)"
+        },
+        "data_description": {
+          "session_cookie": "Found in Chrome DevTools > Network > .AspNetCore.Cookies cookie"
+        }
+      }
+    },
+    "error": {
+      "invalid_cookie": "Invalid session cookie",
+      "cannot_connect": "Failed to connect"
+    },
+    "abort": {
+      "already_configured": "Coop Bonus is already configured"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "total_kr": {
+        "name": "Total Bonus (kr)"
+      },
+      "total_points": {
+        "name": "Total Bonus (poäng)"
+      },
+      "monthly_bonus_kr": {
+        "name": "Monthly Bonus (kr)"
+      },
+      "monthly_bonus_points": {
+        "name": "Monthly Bonus (poäng)"
+      },
+      "member_prices_kr": {
+        "name": "Member Prices (kr)"
+      },
+      "member_prices_points": {
+        "name": "Member Prices (poäng)"
+      },
+      "extra_bonus_kr": {
+        "name": "Extra Bonus (kr)"
+      },
+      "extra_bonus_points": {
+        "name": "Extra Bonus (poäng)"
+      },
+      "next_level_kr": {
+        "name": "Next Level (kr)"
+      },
+      "days_until_next_level": {
+        "name": "Days Until Next Level"
+      },
+      "last_login": {
+        "name": "Last Login"
+      },
+      "member_id": {
+        "name": "Member ID"
+      }
+    }
+  }
+}
