@@ -46,62 +46,107 @@ class CoopAPIClient:
         self._betala_refresh_token = betala_refresh_token
         self._token_update_callback = token_update_callback
         self._betala_access_token: str | None = None
-        self._betala_token_expires: datetime = datetime.min
+        self._betala_token_expires: datetime = datetime.now(tz=UTC)
+        self._betala_refresh_lock = asyncio.Lock()
         self._sub_key = (
             sub_key.strip()
             if (sub_key and isinstance(sub_key, str) and sub_key.strip())
             else DEFAULT_SUB_KEY
         )
         self._access_token: str | None = None
-        self._token_expires: datetime = datetime.min
+        self._token_expires: datetime = datetime.now(tz=UTC)
 
     async def _async_refresh_betala_token(self) -> str | None:
         """Refresh Betala access token using the offline refresh token."""
         if not self._betala_refresh_token:
             return None
 
-        if self._betala_access_token and datetime.now(
-            tz=UTC
-        ) < self._betala_token_expires - timedelta(minutes=5):
-            return self._betala_access_token
+        async with self._betala_refresh_lock:
+            now = datetime.now(tz=UTC)
 
-        token_url = "https://sso.betala.coop.se/auth/realms/coop/protocol/openid-connect/token?origin=scanpay"
-        headers = {
-            "User-Agent": "Coop/7.34 (5882; ; 27.0; ; Apple; iPhone18,3)",
-            "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
-            "Accept": "*/*",
-        }
-        payload = {
-            "client_id": "scanpay",
-            "grant_type": "refresh_token",
-            "refresh_token": self._betala_refresh_token,
-        }
+            # Cache old token in case callback fails
+            old_access_token = self._betala_access_token
+            old_refresh_token = self._betala_refresh_token
 
-        try:
-            async with self.session.post(
-                token_url, headers=headers, data=payload, timeout=aiohttp.ClientTimeout(total=15)
-            ) as resp:
-                if resp.status != 200:
-                    _LOGGER.warning("Failed to refresh Betala token (status %s)", resp.status)
-                    return None
-
-                data = await resp.json()
-                self._betala_access_token = data.get("access_token")
-                expires_in = data.get("expires_in", 3600)
-                self._betala_token_expires = datetime.now(tz=UTC) + timedelta(seconds=expires_in)
-                
-                if (new_rt := data.get("refresh_token")) and new_rt != self._betala_refresh_token:
-                    self._betala_refresh_token = new_rt
-                    if self._token_update_callback:
-                        if asyncio.iscoroutinefunction(self._token_update_callback):
-                            await self._token_update_callback(new_rt)
-                        else:
-                            self._token_update_callback(new_rt)
-
+            # Återanvänd access-token så länge den är giltig.
+            if (
+                self._betala_access_token
+                and now < self._betala_token_expires - timedelta(minutes=5)
+            ):
                 return self._betala_access_token
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.warning("Error refreshing Betala token: %s", err)
-            return None
+
+            token_url = "https://sso.betala.coop.se/auth/realms/coop/protocol/openid-connect/token?origin=scanpay"
+            headers = {
+                "User-Agent": "Coop/7.34 (5882; ; 27.0; ; Apple; iPhone18,3)",
+                "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
+                "Accept": "*/*",
+            }
+            payload = {
+                "client_id": "scanpay",
+                "grant_type": "refresh_token",
+                "refresh_token": self._betala_refresh_token,
+            }
+
+            try:
+                async with self.session.post(
+                    token_url, headers=headers, data=payload, timeout=aiohttp.ClientTimeout(total=15)
+                ) as resp:
+                    if resp.status != 200:
+                        _LOGGER.warning("Failed to refresh Betala token (status %s)", resp.status)
+                        # Restore old tokens and return None
+                        self._betala_access_token = old_access_token
+                        self._betala_refresh_token = old_refresh_token
+                        return None
+
+                    data = await resp.json()
+                    self._betala_access_token = data.get("access_token")
+                    expires_in = data.get("expires_in", 3600)
+                    self._betala_token_expires = datetime.now(tz=UTC) + timedelta(seconds=expires_in)
+
+                    if (new_rt := data.get("refresh_token")) and new_rt != self._betala_refresh_token:
+                        # Spara roterad refresh-token innan funktionen avslutas.
+                        if self._token_update_callback:
+                            callback = self._token_update_callback
+                            if asyncio.iscoroutinefunction(callback):
+                                try:
+                                    await callback(new_rt)
+                                except Exception:
+                                    # Callback failed - restore old refresh token
+                                    _LOGGER.warning(
+                                        "Betala refresh token callback failed; "
+                                        "restoring old token"
+                                    )
+                                    self._betala_refresh_token = old_refresh_token
+                                    self._betala_access_token = old_access_token
+                                    return None
+                            else:
+                                try:
+                                    callback(new_rt)
+                                except Exception:
+                                    # Callback failed - restore old refresh token
+                                    _LOGGER.warning(
+                                        "Betala refresh token callback failed; "
+                                        "restoring old token"
+                                    )
+                                    self._betala_refresh_token = old_refresh_token
+                                    self._betala_access_token = old_access_token
+                                    return None
+
+                        self._betala_refresh_token = new_rt
+
+                    return self._betala_access_token
+            except (TimeoutError, aiohttp.ClientError):
+                _LOGGER.exception("Network error refreshing Betala token")
+                # Restore old tokens
+                self._betala_access_token = old_access_token
+                self._betala_refresh_token = old_refresh_token
+                return None
+            except Exception:
+                _LOGGER.exception("Unexpected error refreshing Betala token")
+                # Restore old tokens
+                self._betala_access_token = old_access_token
+                self._betala_refresh_token = old_refresh_token
+                return None
 
     def _get_sub_key_for_url(self, url: str) -> str:
         """Return the correct subscription key based on target API domain and path."""

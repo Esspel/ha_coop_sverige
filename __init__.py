@@ -36,6 +36,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         session=async_get_clientsession(hass),
         session_cookie=session_cookie,
         sub_key=sub_key,
+        betala_refresh_token=entry.data.get("betala_refresh_token"),
+        token_update_callback=lambda new_token: None,
     )
 
     # Skicka med entry=entry för att ställbart intervall och manuellt butiksnummer ska fungera

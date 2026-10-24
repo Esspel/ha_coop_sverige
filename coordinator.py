@@ -8,15 +8,12 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .client import CoopAPIClient, CoopAPIError, CoopAuthError
 from .const import (
     CONF_SCAN_INTERVAL,
-    CONF_SESSION_COOKIE,
     CONF_STORE_LEDGER_ACCOUNT,
-    CONF_SUB_KEY,
     DEFAULT_SCAN_INTERVAL,
 )
 
@@ -42,13 +39,9 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     ) -> None:
         """Initialize the coordinator."""
         self.config_entry = entry
-        self.api_client = CoopAPIClient(
-            session=async_get_clientsession(hass),
-            session_cookie=entry.data.get(CONF_SESSION_COOKIE),
-            sub_key=entry.data.get(CONF_SUB_KEY),
-            betala_refresh_token=entry.data.get("betala_refresh_token"),
-            token_update_callback=self._async_save_refresh_token,
-        )
+        # Använd den redan konfigurerade api_clienten från __init__.py
+        # för att undvika flera klientinstanser som delar samma refresh-token
+        self.api_client = api_client
 
         interval_mins = (
             entry.options.get(CONF_SCAN_INTERVAL)
