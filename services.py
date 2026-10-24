@@ -160,8 +160,8 @@ def _resolve_list_id(
     if product_id:
         for s_list in shopping_lists:
             lid = str(s_list.get("id") or s_list.get("shoppingListID") or "")
-            products = s_list.get("products") or []
-            for p in products:
+            Products = s_list.get("Products") or []
+            for p in Products:
                 if str(p.get("id") or p.get("productId") or "") == str(product_id):
                     return lid
 
@@ -271,7 +271,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         checked_ids = []
         for s_list in shopping_lists:
             if str(s_list.get("id") or s_list.get("shoppingListID") or "") == list_id:
-                for p in s_list.get("products") or []:
+                for p in s_list.get("Products") or []:
                     if p.get("isChecked") or p.get("checked"):
                         pid = p.get("id") or p.get("productId")
                         if pid:

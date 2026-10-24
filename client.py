@@ -1,3 +1,4 @@
+"""API-client for Coop Sverige."""
 import asyncio
 import logging
 import urllib.parse
@@ -344,7 +345,7 @@ class CoopAPIClient:
         action = {
             "actionType": 0,
             "shoppingListID": str(shopping_list_id),
-            "products": [product],
+            "Products": [product],
         }
         return await self.execute_shopping_list_actions([action])
 
@@ -380,7 +381,7 @@ class CoopAPIClient:
         action = {
             "actionType": 1,
             "shoppingListID": str(shopping_list_id),
-            "products": [product],
+            "Products": [product],
         }
         return await self.execute_shopping_list_actions([action])
 

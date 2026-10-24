@@ -273,7 +273,7 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         if not list_data:
             return []
 
-        products = list_data.get("Products") or list_data.get("products") or list_data.get("items") or []
+        products = list_data.get("products") or list_data.get("Products") or list_data.get("items") or []
         items: list[TodoItem] = []
 
         for p in products:
@@ -364,7 +364,7 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         list_data = self._get_list_data()
         existing_product = {}
         if list_data:
-            for p in (list_data.get("Products") or list_data.get("products") or []):
+            for p in (list_data.get("products") or list_data.get("Products") or []):
                 if str(p.get("ID") or p.get("id") or p.get("productId") or "") == str(item.uid):
                     existing_product = p
                     break

@@ -187,7 +187,7 @@ class CoopShoppingListCard extends HTMLElement {
     const listId = listEntity.attributes.id || listEntity.attributes.shopping_list_id || listEntity.attributes.friendly_name;
 
     await this._hass.callService('ha_coop_sverige', 'add_item', {
-      shopping_list_id: listId,
+      list_id: String(listId),
       name: name,
       quantity: qtyInput.value || 1,
       unit: unitSelect.value || '',
@@ -203,7 +203,7 @@ class CoopShoppingListCard extends HTMLElement {
     const isCompleted = item.status === 'completed';
 
     await this._hass.callService('ha_coop_sverige', 'update_item', {
-      shopping_list_id: listId,
+      list_id: String(listId),
       item_id: item.id || item.summary,
       is_checked: !isCompleted,
     });
@@ -215,7 +215,7 @@ class CoopShoppingListCard extends HTMLElement {
     const listId = listEntity.attributes.id || listEntity.attributes.shopping_list_id || listEntity.attributes.friendly_name;
 
     await this._hass.callService('ha_coop_sverige', 'delete_item', {
-      shopping_list_id: listId,
+      list_id: String(listId),
       product_id: item.id || item.summary,
     });
   }

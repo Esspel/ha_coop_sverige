@@ -75,32 +75,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         configuration_url="https://github.com/Esspel/ha_coop_sverige",
     )
 
-    # If store info is available, register store device
-    store_info = coordinator.data.get("primary_store_info") or {}
-    favs = coordinator.data.get("favorite_stores") or []
-    first_store = favs[0] if isinstance(favs, list) and favs else {}
-    store_ledger = (
-        store_info.get("ledgerAccountNumber")
-        or first_store.get("ledgerAccountNumber")
-        or first_store.get("storeId")
-        or first_store.get("id")
-    )
-    if store_ledger:
-        store_name = store_info.get("name") or first_store.get("name") or "Coop Butik"
-        raw_url = store_info.get("url") or store_info.get("webUrl") or ""
-        conf_url = f"https://www.coop.se{raw_url}" if raw_url.startswith("/") else (raw_url or "https://www.coop.se")
-        
-        dev_reg.async_get_or_create(
-            config_entry_id=entry.entry_id,
-            identifiers={(DOMAIN, f"store_{store_ledger}")},
-            name=f"Favoritbutik {store_name}",
-            manufacturer="Coop Sverige Unofficial",
-            model="Unofficial",
-            entry_type=dr.DeviceEntryType.SERVICE,
-            via_device_id=main_device.id,  # Använder huvudenhetens interna ID
-            configuration_url=conf_url,
-        )
-
     # Forward to platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 

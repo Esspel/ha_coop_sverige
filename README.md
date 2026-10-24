@@ -96,6 +96,7 @@ Spåra ditt medlemskap och dina intjänade poäng i realtid:
 3. Klistra in din `.AspNetCore.Cookies`-cookie i fältet och spara.
 4. Dina sensorer och inköpslistor läggs automatiskt till!
 
+
 ---
 ## 📊 Dashboard-exempel (Lovelace)
 
@@ -119,13 +120,12 @@ content: >
   {% endif %}
   ```
   
-  ### 2. Inköpslista (Todo-kort)
+  ### 2. Inköpslista
   Standardkort för att enkelt lägga till, bocka av och hantera varor på din Coop-inköpslista:
   ```yaml
-  type: todo-list
-  entity: todo.coop_inkopslista
-  title: "🛒 Coop Inköpslista"
+  type: custom:coop-shopping-list-card
   ```
+  Obs! Funkar endast om du lägger till '/ha_coop_sverige_static/coop.js' under Resurser i UI-redigeringsläget
   
   ### 3. Aktiva Medlemserbjudanden & Rabattkuponger
   Visar dina personliga rabatter och kuponger i en överskådlig Markdown-lista med tillhörande rabatt och giltighet:

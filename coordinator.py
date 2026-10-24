@@ -322,12 +322,12 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         unchecked_items_count = 0
         for s_list in shopping_lists:
             if isinstance(s_list, dict):
-                products = s_list.get("products") or s_list.get("items") or []
-                if isinstance(products, list):
-                    total_items_count += len(products)
+                products = (s_list.get("Products")or s_list.get("products")or s_list.get("items")or [])
+                if isinstance(Products, list):
+                    total_items_count += len(Products)
                     unchecked_items_count += sum(
                         1
-                        for p in products
+                        for p in Products
                         if isinstance(p, dict)
                         and not (p.get("isChecked") or p.get("checked"))
                     )
