@@ -19,6 +19,12 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Coop Sverige component."""
     hass.data.setdefault(DOMAIN, {})
+    # Exponera mappen 'www' inne i custom_componenten via en egen URL-sökväg
+    www_dir = Path(__file__).parent / "www"
+    if www_dir.exists():
+        await hass.http.async_register_static_paths([
+            StaticPathConfig("/ha_coop_sverige_static", str(www_dir), cache_headers=False)
+        ])
     await async_setup_services(hass)
     return True
 
@@ -49,13 +55,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         api_client=client,
         entry=entry,
     )
-    
-    # Exponera mappen 'www' inne i custom_componenten via en egen URL-sökväg
-    www_dir = Path(__file__).parent / "www"
-    if www_dir.exists():
-        await hass.http.async_register_static_paths([
-            StaticPathConfig("/ha_coop_sverige_static", str(www_dir), cache_headers=False)
-        ])
         
     # Fetch initial data
     await coordinator.async_config_entry_first_refresh()
@@ -64,9 +63,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = coordinator
     entry.runtime_data = coordinator
 
-    # Explicitly register member device in Home Assistant Device Registry
+   # Explicitly register member device in Home Assistant Device Registry
     dev_reg = dr.async_get(hass)
-    dev_reg.async_get_or_create(
+    main_device = dev_reg.async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, entry.entry_id)},
         name=entry.title or "Coop integration",
@@ -98,7 +97,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             manufacturer="Coop Sverige Unofficial",
             model="Unofficial",
             entry_type=dr.DeviceEntryType.SERVICE,
-            via_device=(DOMAIN, entry.entry_id),
+            via_device_id=main_device.id,  # Använder huvudenhetens interna ID
             configuration_url=conf_url,
         )
 
