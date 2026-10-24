@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.ruff_cache/
+MANIFEST
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDEs and Editors (.vscode, PyCharm, etc.)
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+.project
+.pydevproject
+.settings
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Testing, Linting & Caching
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Home Assistant local test files & databases
+homeassistant.log
+*.db
+*.db-shm
+*.db-wal
