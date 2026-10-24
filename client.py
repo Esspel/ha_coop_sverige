@@ -110,7 +110,7 @@ class CoopAPIClient:
                             if asyncio.iscoroutinefunction(callback):
                                 try:
                                     await callback(new_rt)
-                                except Exception:
+                                except Exception: # noqa: BLE001
                                     # Callback failed - restore old refresh token
                                     _LOGGER.warning(
                                         "Betala refresh token callback failed; "
@@ -122,7 +122,7 @@ class CoopAPIClient:
                             else:
                                 try:
                                     callback(new_rt)
-                                except Exception:
+                                except Exception: # noqa: BLE001
                                     # Callback failed - restore old refresh token
                                     _LOGGER.warning(
                                         "Betala refresh token callback failed; "
@@ -286,6 +286,12 @@ class CoopAPIClient:
         """Fetch yearly loyalty points summary."""
         return await self._api_request(
             "GET", f"{API_BASE}/account/points/summary/yearly?api-version=v4"
+        )
+    
+    async def get_loyalty_timeline(self) -> dict[str, Any]:
+        """Fetch monthly bonus timeline and loyalty ladder progress."""
+        return await self._api_request(
+            "GET", f"{API_BASE}/account/points/timeline?api-version=v4"
         )
 
     # --- Shopping Lists API ---

@@ -62,6 +62,7 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             balance = await self.api_client.get_loyalty_balance()
             yearly = await self.api_client.get_loyalty_summary_yearly()
+            timeline = await self.api_client.get_loyalty_timeline()
         except CoopAuthError as e:
             _LOGGER.error("Coop authentication failed (cookie expired): %s", e)
             raise ConfigEntryAuthFailed(f"Authentication failed: {e}") from e
@@ -262,38 +263,51 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "type": group.get("type", ""),
                 }
 
-        # Flexibel regex-parsing för bonusProgressInfo
-        progress_info = (
-            yearly.get("bonusProgressInfo") or yearly.get("progressInfo") or ""
-        )
+        # Robust parsing av timeline och poängtrappa
+        timeline = timeline if isinstance(timeline, dict) else {}
         bonus_info: dict[str, Any] = {
             "next_level_kr": 0.0,
             "days_until_next_level": 0,
+            "bonus_timeline": timeline,
         }
 
-        if isinstance(progress_info, str) and progress_info:
-            kr_match = re.search(
-                r"(\d+(?:[\.,]\d+)?)\s*kr", progress_info, re.IGNORECASE
-            )
-            if kr_match:
-                try:
-                    bonus_info["next_level_kr"] = float(
-                        kr_match.group(1).replace(".", "").replace(",", ".")
-                    )
-                except ValueError:
-                    pass
-
-            days_match = re.search(r"(\d+)\s*dag", progress_info, re.IGNORECASE)
+        # Extrahera dagar kvar
+        progress_days_str = (
+            timeline.get("bonusProgressInfoDays")
+            or timeline.get("bonusProgressInfo")
+            or ""
+        )
+        if isinstance(progress_days_str, str):
+            days_match = re.search(r"(\d+)\s*dag", progress_days_str, re.IGNORECASE)
             if days_match:
                 try:
                     bonus_info["days_until_next_level"] = int(days_match.group(1))
                 except ValueError:
                     pass
-        elif isinstance(progress_info, dict):
+
+        # Extrahera kronor till nästa nivå direkt från den aktiva nivån i trappan
+        levels = timeline.get("levels") or []
+        active_level = next(
+            (lvl for lvl in levels if isinstance(lvl, dict) and lvl.get("current")),
+            None,
+        )
+        if active_level:
             bonus_info["next_level_kr"] = float(
-                progress_info.get("amountToNextLevel", 0.0)
+                active_level.get("amountRemaining", 0.0)
             )
-            bonus_info["days_until_next_level"] = int(progress_info.get("daysLeft", 0))
+        else:
+            progress_monetary_str = timeline.get("bonusProgressMonetary") or ""
+            if isinstance(progress_monetary_str, str):
+                kr_match = re.search(
+                    r"(\d+(?:[\.,]\d+)?)\s*kr", progress_monetary_str, re.IGNORECASE
+                )
+                if kr_match:
+                    try:
+                        bonus_info["next_level_kr"] = float(
+                            kr_match.group(1).replace(".", "").replace(",", ".")
+                        )
+                    except ValueError:
+                        pass
 
         # Räkna aktiva personliga erbjudanden
         active_offers = []

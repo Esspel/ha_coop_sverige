@@ -171,7 +171,7 @@ class CoopConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 result.get("email", "")
             except ValueError:
                 errors["base"] = "invalid_cookie"
-            except Exception:  # noqa: BLE001
+            except Exception: # noqa: BLE001  # noqa: BLE001
                 errors["base"] = "cannot_connect"
 
             if not errors and conf_entry:
@@ -231,7 +231,7 @@ class CoopOptionsFlowHandler(config_entries.OptionsFlow):
                 return self.async_create_entry(title="", data=options_data)
             except ValueError:
                 errors["base"] = "invalid_cookie"
-            except Exception:  # noqa: BLE001
+            except Exception: # noqa: BLE001  # noqa: BLE001
                 errors["base"] = "cannot_connect"
 
         cookie = self.config_entry.options.get(

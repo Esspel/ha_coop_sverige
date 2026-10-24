@@ -130,21 +130,54 @@ content: >
   ### 3. Aktiva Medlemserbjudanden & Rabattkuponger
   Visar dina personliga rabatter och kuponger i en överskådlig Markdown-lista med tillhörande rabatt och giltighet:
   ```yaml
-  type: markdown
-  title: "🎁 Aktiva Rabatter & Erbjudanden"
-  content: >
-    {% set offers = state_attr('sensor.aktiva_personliga_erbjudanden', 'personal_offers') %}
-    {% if offers and offers | length > 0 %}
-      {% for offer in offers %}
-      **{{ offer.title }}**
-      _{{ offer.description }}_
-      * **Rabatt:** {{ offer.discountText or 'Medlemsrabatt' }}
-      * **Giltig till:** {{ offer.validTo[:10] if offer.validTo else 'Ej angivet' }}
-      ---
-      {% endfor %}
-    {% else %}
-      Inga aktiva personliga erbjudanden just nu.
-    {% endif %}
+    type: custom:auto-entities
+    card:
+      type: grid
+      columns: 2
+      square: false
+    card_param: cards
+    filter:
+      template: |
+        {% set offers = state_attr('sensor.coop_sverige_aktiva_personliga_erbjudanden', 'active_offers') or [] %}
+        {% set ns = namespace(cards=[]) %}
+        {% for item in offers %}
+          {% set offer = item.get('offer', {}) %}
+          {% set title = (offer.get('heading') or offer.get('name') or 'Personligt erbjudande') | trim %}
+          {% set desc_header = offer.get('descriptionHeader', '') | trim %}
+          {% set description = offer.get('descriptionBody', '') | trim %}
+          {% set discount = offer.get('discount', '') | trim %}
+          {% set term = offer.get('discountTerm', '') | trim %}
+          {% set limitation = offer.get('footerLimitationText', '') | trim %}
+          {% set footer_valid = offer.get('footerValidityEndDate', '') | trim %}
+          {% set deal_type = offer.get('dealScoringType', '') %}
+          {% set raw_img = offer.get('imageUrl') %}
+          {% set render_img = raw_img.replace('http://', 'https://').replace('/upload/', '/upload/w_200,h_200,c_fit/').replace('.tiff', '.webp').replace('.tif', '.webp') if raw_img else '' %}
+          
+          {% set card_content = "<div style='text-align: center; padding: 4px;'>" %}
+          {% if deal_type %}
+            {% set card_content = card_content ~ "<div style='text-align: right; margin-bottom: -15px;'><span style='background-color: #72b01d; color: #fff; font-size: 0.6em; font-weight: bold; padding: 2px 6px; border-radius: 8px; text-transform: uppercase;'>" ~ deal_type ~ "</span></div>" %}
+          {% endif %}
+          {% if render_img %}
+            {% set card_content = card_content ~ "<img src='" ~ render_img ~ "' style='max-width: 110px; height: 110px; object-fit: contain; margin: 4px auto; display: block;' />" %}
+          {% endif %}
+          {% set card_content = card_content ~ "<h3 style='margin: 6px 0 2px 0; font-size: 1.05em;'>" ~ title ~ "</h3>" %}
+          {% if description %}
+            {% set card_content = card_content ~ "<p style='font-size: 0.8em; opacity: 0.8; margin: 0 0 6px 0;'><b>" ~ desc_header ~ "</b>. " ~ description ~ "</p>" %}
+          {% endif %}
+          {% if discount %}
+            {% set card_content = card_content ~ "<div style='background-color: #ffe600; color: #000; font-weight: bold; padding: 3px 8px; border-radius: 4px; display: inline-block; font-size: 0.85em; margin: 4px 0;'>" ~ discount ~ (" " ~ term if term else "") ~ "</div>" %}
+          {% endif %}
+          {% if limitation %}
+            {% set card_content = card_content ~ "<p style='font-size: 0.7em; color: #d9381e; margin: 4px 0 2px 0;'>Erbj. " ~ limitation ~ "</p>" %}
+          {% endif %}
+          {% if footer_valid %}
+            {% set card_content = card_content ~ "<p style='font-size: 0.7em; opacity: 0.6; margin: 2px 0 0 0;'>" ~ footer_valid ~ "</p>" %}
+          {% endif %}
+          {% set card_content = card_content ~ "</div>" %}
+          
+          {% set ns.cards = ns.cards + [{"type": "markdown", "content": card_content}] %}
+        {% endfor %}
+        {{ ns.cards | tojson }}
   ```
 
   ### 4. Bonusmätare & Medlemsstatus (Entities Card)

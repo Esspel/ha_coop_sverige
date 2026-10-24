@@ -9,5 +9,9 @@
     "@esspel"
   ],
   "config_flow": true,
-  "iot_class": "cloud_polling"
+  "iot_class": "cloud_polling",
+  "frontend": {
+    "include_components": [],
+    "config": []
+  }
 }
