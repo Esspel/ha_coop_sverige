@@ -11,12 +11,12 @@ from homeassistant.helpers.selector import selector
 from .const import (
     CONF_EMAIL,
     CONF_NAME,
-    CONF_SESSION_COOKIE,
-    CONF_SUB_KEY,
-    CONF_STORE_LEDGER_ACCOUNT,
     CONF_SCAN_INTERVAL,
-    DEFAULT_SUB_KEY,
+    CONF_SESSION_COOKIE,
+    CONF_STORE_LEDGER_ACCOUNT,
+    CONF_SUB_KEY,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SUB_KEY,
     DOMAIN,
     TOKEN_URL,
 )
@@ -31,20 +31,29 @@ def _get_user_schema(
     default_interval: int = DEFAULT_SCAN_INTERVAL,
 ) -> vol.Schema:
     """Schema for initial setup."""
-    return vol.Schema({
-        vol.Required(CONF_SESSION_COOKIE, default=default_cookie): selector(
-            {"text": {"type": "password"}}
-        ),
-        vol.Optional(CONF_SUB_KEY, default=default_sub_key): selector(
-            {"text": {"type": "text"}}
-        ),
-        vol.Optional(CONF_STORE_LEDGER_ACCOUNT, default=default_store): selector(
-            {"text": {"type": "text"}}
-        ),
-        vol.Optional(CONF_SCAN_INTERVAL, default=default_interval): selector(
-            {"number": {"min": 10, "max": 120, "step": 5, "unit_of_measurement": "minuter"}}
-        ),
-    })
+    return vol.Schema(
+        {
+            vol.Required(CONF_SESSION_COOKIE, default=default_cookie): selector(
+                {"text": {"type": "password"}}
+            ),
+            vol.Optional(CONF_SUB_KEY, default=default_sub_key): selector(
+                {"text": {"type": "text"}}
+            ),
+            vol.Optional(CONF_STORE_LEDGER_ACCOUNT, default=default_store): selector(
+                {"text": {"type": "text"}}
+            ),
+            vol.Optional(CONF_SCAN_INTERVAL, default=default_interval): selector(
+                {
+                    "number": {
+                        "min": 10,
+                        "max": 120,
+                        "step": 5,
+                        "unit_of_measurement": "minuter",
+                    }
+                }
+            ),
+        }
+    )
 
 
 def _get_options_schema(
@@ -53,17 +62,26 @@ def _get_options_schema(
     default_interval: int = DEFAULT_SCAN_INTERVAL,
 ) -> vol.Schema:
     """Schema for options flow ( hides subscription key from user )."""
-    return vol.Schema({
-        vol.Required(CONF_SESSION_COOKIE, default=default_cookie): selector(
-            {"text": {"type": "password"}}
-        ),
-        vol.Optional(CONF_STORE_LEDGER_ACCOUNT, default=default_store): selector(
-            {"text": {"type": "text"}}
-        ),
-        vol.Optional(CONF_SCAN_INTERVAL, default=default_interval): selector(
-            {"number": {"min": 10, "max": 120, "step": 5, "unit_of_measurement": "minuter"}}
-        ),
-    })
+    return vol.Schema(
+        {
+            vol.Required(CONF_SESSION_COOKIE, default=default_cookie): selector(
+                {"text": {"type": "password"}}
+            ),
+            vol.Optional(CONF_STORE_LEDGER_ACCOUNT, default=default_store): selector(
+                {"text": {"type": "text"}}
+            ),
+            vol.Optional(CONF_SCAN_INTERVAL, default=default_interval): selector(
+                {
+                    "number": {
+                        "min": 10,
+                        "max": 120,
+                        "step": 5,
+                        "unit_of_measurement": "minuter",
+                    }
+                }
+            ),
+        }
+    )
 
 
 async def _validate_cookie(hass, session_cookie: str) -> dict[str, Any]:
@@ -84,7 +102,9 @@ class CoopConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -99,7 +119,7 @@ class CoopConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 name = f"Coop Sverige ({email})"
             except ValueError:
                 errors["base"] = "invalid_cookie"
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 _LOGGER.error("Validation failed: %s", e)
                 errors["base"] = "cannot_connect"
 
@@ -112,30 +132,38 @@ class CoopConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     data={
                         CONF_SESSION_COOKIE: session_cookie,
                         CONF_SUB_KEY: sub_key,
-                        CONF_STORE_LEDGER_ACCOUNT: store_ledger if store_ledger else None,
+                        CONF_STORE_LEDGER_ACCOUNT: store_ledger
+                        if store_ledger
+                        else None,
                         CONF_SCAN_INTERVAL: scan_interval,
                         CONF_EMAIL: email,
                         CONF_NAME: name,
                     },
                 )
 
-        return self.async_show_form(step_id="user", data_schema=_get_user_schema(), errors=errors)
+        return self.async_show_form(
+            step_id="user", data_schema=_get_user_schema(), errors=errors
+        )
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> config_entries.OptionsFlow:
         return CoopOptionsFlowHandler()
 
 
 class CoopOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for Coop Sverige."""
 
-    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
         errors: dict[str, str] = {}
 
         if user_input is not None:
             session_cookie = user_input[CONF_SESSION_COOKIE].strip()
-            
+
             try:
                 await _validate_cookie(self.hass, session_cookie)
                 # Behåll den befintliga sub_key i options-datan så den inte försvinner
@@ -151,12 +179,18 @@ class CoopOptionsFlowHandler(config_entries.OptionsFlow):
                 return self.async_create_entry(title="", data=options_data)
             except ValueError:
                 errors["base"] = "invalid_cookie"
-            except Exception:
+            except Exception:  # noqa: BLE001
                 errors["base"] = "cannot_connect"
 
-        cookie = self.config_entry.options.get(CONF_SESSION_COOKIE) or self.config_entry.data.get(CONF_SESSION_COOKIE, "")
-        store_ledger = self.config_entry.options.get(CONF_STORE_LEDGER_ACCOUNT) or self.config_entry.data.get(CONF_STORE_LEDGER_ACCOUNT, "")
-        scan_interval = self.config_entry.options.get(CONF_SCAN_INTERVAL) or self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        cookie = self.config_entry.options.get(
+            CONF_SESSION_COOKIE
+        ) or self.config_entry.data.get(CONF_SESSION_COOKIE, "")
+        store_ledger = self.config_entry.options.get(
+            CONF_STORE_LEDGER_ACCOUNT
+        ) or self.config_entry.data.get(CONF_STORE_LEDGER_ACCOUNT, "")
+        scan_interval = self.config_entry.options.get(
+            CONF_SCAN_INTERVAL
+        ) or self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
         return self.async_show_form(
             step_id="init",

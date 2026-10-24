@@ -96,8 +96,119 @@ Spåra ditt medlemskap och dina intjänade poäng i realtid:
 4. Dina sensorer och inköpslistor läggs automatiskt till!
 
 ---
+## 📊 Dashboard-exempel (Lovelace)
+
+### 1. Markdown-kort för automatiska kvitton med PDF-länkar
+Lägg till ett Markdown-kort i din dashboard för att automatiskt lista dina senaste köp från kvittosensorn:
+```yaml
+type: markdown
+title: "🧾 Senaste Coop-kvitton"
+content: >
+  {% set receipts = state_attr('sensor.coop_sverige_kvitton', 'receipts') %}
+  {% if receipts and receipts | length > 0 %}
+    Här är dina senaste inköp:
+    
+    | Datum | Butik | Belopp | Kvitto |
+    | :--- | :--- | :---: | :---: |
+    {% for r in receipts[:10] %}
+    | {{ r.purchased_at[:10] }} | {{ r.purchase_place }} | **{{ r.purchase_amount }} kr** | [Visa PDF](/local/coop_receipts/kvitto_{{ r.receipt_id }}.pdf) |
+    {% endfor %}
+  {% else %}
+    Inga kvitton hittades eller så synkroniseras de just nu.
+  {% endif %}
+  ```
+  
+  ### 2. Inköpslista (Todo-kort)
+  Standardkort för att enkelt lägga till, bocka av och hantera varor på din Coop-inköpslista:
+  ```yaml
+  type: todo-list
+  entity: todo.coop_inkopslista
+  title: "🛒 Coop Inköpslista"
+  ```
+  
+  ### 3. Aktiva Medlemserbjudanden & Rabattkuponger
+  Visar dina personliga rabatter och kuponger i en överskådlig Markdown-lista med tillhörande rabatt och giltighet:
+  ```yaml
+  type: markdown
+  title: "🎁 Aktiva Rabatter & Erbjudanden"
+  content: >
+    {% set offers = state_attr('sensor.aktiva_personliga_erbjudanden', 'personal_offers') %}
+    {% if offers and offers | length > 0 %}
+      {% for offer in offers %}
+      **{{ offer.title }}**
+      _{{ offer.description }}_
+      * **Rabatt:** {{ offer.discountText or 'Medlemsrabatt' }}
+      * **Giltig till:** {{ offer.validTo[:10] if offer.validTo else 'Ej angivet' }}
+      ---
+      {% endfor %}
+    {% else %}
+      Inga aktiva personliga erbjudanden just nu.
+    {% endif %}
+  ```
+
+  ### 4. Bonusmätare & Medlemsstatus (Entities Card)
+  En ren entitetsöversikt över din intjänade bonus, sparde medlemspriser och framsteg mot nästa bonusnivå:
+  ```yaml
+  type: entities
+  title: "💳 Coop Medlemskap & Bonus"
+  entities:
+    - entity: sensor.coop_total_bonus
+      name: "Total Intjänad Bonus"
+    - entity: sensor.coop_manadsbonus
+      name: "Månadsbonus"
+    - entity: sensor.coop_medlemspriser_sparat
+      name: "Sparat via Medlemspriser"
+    - entity: sensor.coop_kvar_till_nasta_bonusniva
+      name: "Kvar till nästa nivå"
+    - entity: sensor.coop_dagar_kvar_pa_bonusmanad
+      name: "Dagar kvar denna månad"
+  ```
+  
+  ### 5. Favoritbutik, Öppettider & Helgdagshändelser
+  Visar din valda favoritbutiks ordinarie tider samt varnar om det finns avvikande öppettider inför helgdagar:
+  ```yaml
+    type: markdown
+    title: "🏪 Favoritbutik & Öppettider"
+    content: >
+      {% set store = state_attr('sensor.coop_favoritbutik', 'primary_store_info') %}
+      {% set warnings = state_attr('sensor.coop_favoritbutik', 'upcoming_holiday_warnings') %}
+      
+      **{{ store.name if store else 'Din Coop-butik' }}**
+      
+      {% if warnings and warnings | length > 0 %}
+        ⚠️ **Avvikande öppettider på gång:**
+        {% for w in warnings %}
+        * **{{ w.date }}**: {{ w.description }} ({{ w.openingHours }})
+        {% endfor %}
+      {% else %}
+        ✅ Inga avvikande öppettider rapporterade den närmsta tiden.
+      {% endif %}
+  ```
+
+---
 
 ## 🛠️ Tjänster / Åtgärder (Actions)
+
+### Kvitton
+
+#### `ha_coop_sverige.get_receipts`
+Hämtar en lista över genomförda köp inom ett angivet datumintervall.
+```yaml
+action: ha_coop_sverige.get_receipts
+data:
+  from_date: "2026-01-01"
+  to_date: "2026-10-24"
+  per_page: 20
+response_variable: kvitton
+```
+
+#### `ha_coop_sverige.download_receipt_pdf`
+Laddar ner det formella PDF-kvittot för ett specifikt kvitto-ID och sparar det under '/config/www/coop_receipts/'.
+```yaml
+action: ha_coop_sverige.download_receipt_pdf
+data:
+  receipt_id: "413c38f8-7441-41fc-bf71-db84f0bbd502"
+```
 
 ### Inköpslistor
 
@@ -133,6 +244,29 @@ Skapar en ny inköpslista.
 action: ha_coop_sverige.create_shopping_list
 data:
   name: "Tacos på Fredag"
+```
+
+### Recept
+
+#### `ha_coop_sverige.search_recipes`
+Söker efter recept på pannkakor.
+```yaml
+action: ha_coop_sverige.search_recipes
+data:
+  query: "pannkakor"
+response_variable: recept
+```
+
+### 💳 Bonus & Köphistorik
+
+#### `ha_coop_sverige.get_purchase_history`
+Hämtar en månatlig sammanställning över poänggrundande köp och transaktioner för angivet år och månad (standard är innevarande månad).
+```yaml
+action: ha_coop_sverige.get_purchase_history
+data:
+  year: 2026
+  month: 10
+response_variable: kophistorik
 ```
 
 ### 🏷️ Giltiga avdelningar och enheter
@@ -230,13 +364,24 @@ action:
       quantity: "1"
       unit: "kg"
 ```
-
+### 3. Ladda ner PDF-kvitto automatiskt när ett nytt köp görs
+```yaml
+alias: "Spara kvitto-PDF automatiskt"
+trigger:
+  - platform: state
+    entity_id: sensor.coop_sverige_kvitton
+action:
+  - action: ha_coop_sverige.download_receipt_pdf
+    data:
+      receipt_id: "{{ state_attr('sensor.coop_sverige_kvitton', 'receipts')[0].receipt_id }}"
+```
 ---
 
 ## 📡 API-Översikt
 Integrationen ansluter mot Coops officiella API-tjänster:
 - **Autentisering**: `https://www.coop.se/api/spa/token` (Bearer JWT via sessionscookie).
 - **Inköpslistor**: `https://proxy.api.coop.se/digital/shoppinglist` (`api-version=v2`).
+- **Kvitton**: `https://api.betala.coop.se/kvitto/rest/receipts/v1` (`api-version=v1`).
 - **Personliga rabatter**: `https://external.api.coop.se/digital/personaloffers/offers` (`api-version=v2`).
 - **Butiker & Öppettider**: `https://proxy.api.coop.se/external/store/stores/{id}` (`api-version=v3`).
 - **Favoritbutiker**: `https://proxy.api.coop.se/external/store/favorite-stores/me` (`api-version=v1`).

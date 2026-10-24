@@ -1,9 +1,10 @@
 import logging
 import urllib.parse
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import aiohttp
+
 from .const import (
     API_BASE,
     DEFAULT_SUB_KEY,
@@ -59,7 +60,9 @@ class CoopAPIClient:
 
     async def _async_refresh_token(self) -> None:
         """Get a new access token using the session cookie."""
-        if self._access_token and datetime.now(tz=timezone.utc) < self._token_expires - timedelta(minutes=5):
+        if self._access_token and datetime.now(
+            tz=UTC
+        ) < self._token_expires - timedelta(minutes=5):
             return
 
         try:
@@ -92,14 +95,18 @@ class CoopAPIClient:
                 expires_str = result.get("expires") or result.get("expires_in")
                 if expires_str:
                     if isinstance(expires_str, (int, float)):
-                        self._token_expires = datetime.now(tz=timezone.utc) + timedelta(seconds=expires_str)
+                        self._token_expires = datetime.now(tz=UTC) + timedelta(
+                            seconds=expires_str
+                        )
                     else:
                         try:
-                            self._token_expires = datetime.fromisoformat(str(expires_str).replace("Z", "+00:00"))
-                        except Exception:
-                            self._token_expires = datetime.now(tz=timezone.utc) + timedelta(hours=1)
+                            self._token_expires = datetime.fromisoformat(str(expires_str))
+                        except (ValueError, TypeError):
+                            self._token_expires = datetime.now(tz=UTC) + timedelta(hours=1)
                 else:
-                    self._token_expires = datetime.now(tz=timezone.utc) + timedelta(hours=1)
+                    self._token_expires = datetime.now(tz=UTC) + timedelta(
+                        hours=1
+                    )
 
                 _LOGGER.debug("Token refreshed, expires at %s", self._token_expires)
 
@@ -115,20 +122,26 @@ class CoopAPIClient:
         await self._async_refresh_token()
 
         headers = kwargs.get("headers", {})
-        headers.update({
-            "Authorization": f"Bearer {self._access_token}",
-            "Ocp-Apim-Subscription-Key": self._sub_key,
-            "Accept": "application/json",
-        })
+        headers.update(
+            {
+                "Authorization": f"Bearer {self._access_token}",
+                "Ocp-Apim-Subscription-Key": self._sub_key,
+                "Accept": "application/json",
+            }
+        )
         kwargs["headers"] = headers
 
         try:
-            async with self.session.request(method, url, timeout=aiohttp.ClientTimeout(total=15), **kwargs) as resp:
+            async with self.session.request(
+                method, url, timeout=aiohttp.ClientTimeout(total=15), **kwargs
+            ) as resp:
                 if resp.status == 401:
                     # Token might have expired between check and use
                     await self._async_refresh_token()
                     headers["Authorization"] = f"Bearer {self._access_token}"
-                    async with self.session.request(method, url, timeout=aiohttp.ClientTimeout(total=15), **kwargs) as retry_resp:
+                    async with self.session.request(
+                        method, url, timeout=aiohttp.ClientTimeout(total=15), **kwargs
+                    ) as retry_resp:
                         return await self._parse_response(retry_resp)
 
                 return await self._parse_response(resp)
@@ -158,11 +171,15 @@ class CoopAPIClient:
 
     async def get_loyalty_balance(self) -> dict[str, Any]:
         """Fetch loyalty points balance."""
-        return await self._api_request("GET", f"{API_BASE}/account/points/balance?api-version=v3")
+        return await self._api_request(
+            "GET", f"{API_BASE}/account/points/balance?api-version=v3"
+        )
 
     async def get_loyalty_summary_yearly(self) -> dict[str, Any]:
         """Fetch yearly loyalty points summary."""
-        return await self._api_request("GET", f"{API_BASE}/account/points/summary/yearly?api-version=v4")
+        return await self._api_request(
+            "GET", f"{API_BASE}/account/points/summary/yearly?api-version=v4"
+        )
 
     # --- Shopping Lists API ---
 
@@ -173,11 +190,15 @@ class CoopAPIClient:
     async def create_shopping_list(self, name: str) -> dict[str, Any]:
         """Create a new empty shopping list."""
         encoded_name = urllib.parse.quote(name)
-        return await self._api_request("POST", f"{SHOPPING_LIST_BASE}/{encoded_name}?api-version=v2")
+        return await self._api_request(
+            "POST", f"{SHOPPING_LIST_BASE}/{encoded_name}?api-version=v2"
+        )
 
     async def delete_shopping_list(self, shopping_list_id: str | int) -> dict[str, Any]:
         """Delete an entire shopping list."""
-        return await self._api_request("DELETE", f"{SHOPPING_LIST_BASE}/{shopping_list_id}?api-version=v2")
+        return await self._api_request(
+            "DELETE", f"{SHOPPING_LIST_BASE}/{shopping_list_id}?api-version=v2"
+        )
 
     async def execute_shopping_list_actions(self, actions: list[dict[str, Any]]) -> Any:
         """Execute action batch on shopping lists.
@@ -196,7 +217,7 @@ class CoopAPIClient:
         self,
         shopping_list_id: str | int,
         name: str,
-        quantity: str | int | float | None = None,
+        quantity: str | float | None = None,
         unit: str | None = None,
         placement: str | None = None,
     ) -> Any:
@@ -224,7 +245,7 @@ class CoopAPIClient:
         shopping_list_id: str | int,
         product_id: str | int,
         name: str | None = None,
-        quantity: str | int | float | None = None,
+        quantity: str | float | None = None,
         unit: str | None = None,
         placement: str | None = None,
         is_checked: bool | None = None,
@@ -244,7 +265,9 @@ class CoopAPIClient:
         if placement is not None:
             product["placement"] = placement
         if is_checked is not None:
-            product["checked"] = bool(is_checked)  # API:et använder "checked" i POST-requesten
+            product["checked"] = bool(
+                is_checked
+            )  # API:et använder "checked" i POST-requesten
         if external_ingredient_id is not None:
             product["externalIngredientID"] = external_ingredient_id
 
@@ -284,9 +307,13 @@ class CoopAPIClient:
 
     async def get_favorite_stores(self) -> list[dict[str, Any]] | dict[str, Any]:
         """Fetch the member's favorite stores."""
-        return await self._api_request("GET", f"{STORE_BASE}/favorite-stores/me?api-version=v1")
+        return await self._api_request(
+            "GET", f"{STORE_BASE}/favorite-stores/me?api-version=v1"
+        )
 
-    async def get_stores_by_coordinates(self, latitude: float, longitude: float) -> list[dict[str, Any]] | dict[str, Any]:
+    async def get_stores_by_coordinates(
+        self, latitude: float, longitude: float
+    ) -> list[dict[str, Any]] | dict[str, Any]:
         """Find nearby stores based on geographical coordinates."""
         return await self._api_request(
             "GET",
@@ -295,9 +322,100 @@ class CoopAPIClient:
 
     async def get_store_info(self, ledger_account_number: str | int) -> dict[str, Any]:
         """Fetch comprehensive store info, services and opening hours."""
-        return await self._api_request("GET", f"{STORE_BASE}/stores/{ledger_account_number}?api-version=v3")
+        return await self._api_request(
+            "GET", f"{STORE_BASE}/stores/{ledger_account_number}?api-version=v3"
+        )
 
-    async def get_sorting_groups(self, store_ledger_account_number: str | int) -> dict[str, Any]:
+    async def get_sorting_groups(
+        self, store_ledger_account_number: str | int
+    ) -> dict[str, Any]:
         """Fetch campaigns, sorting groups and product deals for a store."""
         url = f"{OFFERS_BASE}/sorting-groups/{store_ledger_account_number}?grouped=true&api-version=v3&clustered=true"
         return await self._api_request("GET", url)
+
+    # --- Receipts API ---
+
+    async def get_receipts(
+        self,
+        from_date: str | None = None,
+        to_date: str | None = None,
+        page: int = 1,
+        per_page: int = 15,
+    ) -> dict[str, Any]:
+        """Fetch list of purchase receipts."""
+        if not from_date:
+            from_date = (datetime.now(UTC) - timedelta(days=365)).strftime(
+                "%Y-%m-%d"
+            )
+        if not to_date:
+            to_date = datetime.now(UTC).strftime("%Y-%m-%d")
+
+        url = f"https://api.betala.coop.se/kvitto/rest/receipts/v1?from_date={from_date}&to_date={to_date}&page={page}&per_page={per_page}"
+        return await self._api_request("GET", url)
+
+    async def get_formal_receipt_pdf(self, receipt_id: str) -> bytes:
+        """Fetch the formal receipt PDF for a specific receipt ID."""
+        url = f"https://api.betala.coop.se/kvitto/rest/receipts/v1/{receipt_id}/formalReceipt"
+        await self._async_refresh_token()
+        headers = {
+            "Authorization": f"Bearer {self._access_token}",
+            "Ocp-Apim-Subscription-Key": self._sub_key,
+            "Accept": "*/*",
+        }
+        async with self.session.get(
+            url, headers=headers, timeout=aiohttp.ClientTimeout(total=20)
+        ) as resp:
+            if resp.status != 200:
+                text = await resp.text()
+                raise CoopAPIError(f"Failed to fetch receipt PDF {resp.status}: {text}")
+            return await resp.read()
+
+    # --- Recipe Search API ---
+
+    async def search_recipes(
+        self, query: str = "", categories: list[str] | None = None
+    ) -> dict[str, Any]:
+        """Search recipes with optional text query and category filters."""
+        url = "https://external.api.coop.se/personalization/search/recipes?api-version=v1&direct=false"
+        payload = {
+            "session": {},
+            "user": {
+                "dyid": None,
+                "active_consent_accepted": True,
+                "dyid_server": None,
+            },
+            "resultsOptions": {
+                "facets": [{"attributeName": "categories", "type": "distinct"}]
+            },
+        }
+        if query:
+            payload["query"] = query
+        if categories:
+            payload["filters"] = [{"attributeName": "categories", "values": categories}]
+
+        await self._async_refresh_token()
+        headers = {
+            "Authorization": f"Bearer {self._access_token}",
+            "Ocp-Apim-Subscription-Key": self._sub_key,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        async with self.session.post(url, json=payload, headers=headers) as resp:
+            if resp.status != 200:
+                text = await resp.text()
+                raise CoopAPIError(f"Recipe search failed {resp.status}: {text}")
+            return await resp.json()
+
+    # --- Purchase History / Köphistorik API ---
+
+    async def get_purchase_history(
+        self, year: int | None = None, month: int | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch monthly purchase and points history."""
+        now = datetime.now(UTC)
+        target_year = year or now.year
+        target_month = month or now.month
+
+        url = f"{API_BASE}/account/points/purchasehistory/{target_year}/{target_month:02d}?api-version=v3"
+        res = await self._api_request("GET", url)
+        return res if isinstance(res, list) else []

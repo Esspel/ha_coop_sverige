@@ -1,5 +1,4 @@
 import logging
-from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -7,9 +6,9 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 
-from .const import DOMAIN, PLATFORMS, CONF_SESSION_COOKIE, CONF_SUB_KEY
-from .coordinator import CoopCoordinator
 from .client import CoopAPIClient
+from .const import CONF_SESSION_COOKIE, CONF_SUB_KEY, DEFAULT_SUB_KEY, DOMAIN, PLATFORMS
+from .coordinator import CoopCoordinator
 from .services import async_setup_services
 
 _LOGGER = logging.getLogger(__name__)
@@ -22,12 +21,16 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
-async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry
-) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Coop Sverige from a config entry."""
-    session_cookie = entry.options.get(CONF_SESSION_COOKIE) or entry.data[CONF_SESSION_COOKIE]
-    sub_key = entry.options.get(CONF_SUB_KEY) or entry.data.get(CONF_SUB_KEY) or DEFAULT_SUB_KEY
+    session_cookie = (
+        entry.options.get(CONF_SESSION_COOKIE) or entry.data[CONF_SESSION_COOKIE]
+    )
+    sub_key = (
+        entry.options.get(CONF_SUB_KEY)
+        or entry.data.get(CONF_SUB_KEY)
+        or DEFAULT_SUB_KEY
+    )
 
     client = CoopAPIClient(
         session=async_get_clientsession(hass),
@@ -81,7 +84,9 @@ async def async_setup_entry(
             model="Unofficial",
             entry_type=dr.DeviceEntryType.SERVICE,
             via_device=(DOMAIN, entry.entry_id),
-            configuration_url=store_info.get("url") or store_info.get("webUrl") or "https://www.coop.se",
+            configuration_url=store_info.get("url")
+            or store_info.get("webUrl")
+            or "https://www.coop.se",
         )
 
     # Forward to platforms
@@ -98,9 +103,7 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-async def async_unload_entry(
-    hass: HomeAssistant, entry: ConfigEntry
-) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:

@@ -1,7 +1,6 @@
 """Services for the Coop Sverige integration."""
-
 import logging
-from typing import Any
+import os
 
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse
@@ -9,6 +8,7 @@ from homeassistant.helpers import config_validation as cv
 
 try:
     from homeassistant.core import SupportsResponse
+
     OPTIONAL_RESPONSE = SupportsResponse.OPTIONAL
 except ImportError:
     OPTIONAL_RESPONSE = None
@@ -54,6 +54,7 @@ def normalize_placement(placement: str | None) -> str:
         if cleaned == valid_norm or cleaned in valid_norm:
             return valid
     return placement.strip()
+
 
 ATTR_ENTRY_ID = "entry_id"
 ATTR_LIST_ID = "list_id"
@@ -139,14 +140,18 @@ def _get_coordinator(hass: HomeAssistant, entry_id: str | None) -> CoopCoordinat
         raise ValueError("No Coop integration entries found")
     if entry_id and entry_id in entries:
         return entries[entry_id]
-    return list(entries.values())[0]
+    return next(iter(entries.values()))
 
 
-def _resolve_list_id(coordinator: CoopCoordinator, list_id: str | None, product_id: str | None = None) -> str:
+def _resolve_list_id(
+    coordinator: CoopCoordinator, list_id: str | None, product_id: str | None = None
+) -> str:
     """Resolve shopping list ID, defaulting to first available or one containing the product."""
     shopping_lists = coordinator.data.get("shopping_lists") or []
     if isinstance(shopping_lists, dict):
-        shopping_lists = shopping_lists.get("shoppingLists") or shopping_lists.get("lists") or []
+        shopping_lists = (
+            shopping_lists.get("shoppingLists") or shopping_lists.get("lists") or []
+        )
 
     if list_id:
         return str(list_id)
@@ -214,12 +219,16 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         """Update an item in a shopping list and return status."""
         coordinator = _get_coordinator(hass, call.data.get(ATTR_ENTRY_ID))
         product_id = call.data[ATTR_PRODUCT_ID]
-        list_id = _resolve_list_id(coordinator, call.data.get(ATTR_LIST_ID), product_id=product_id)
+        list_id = _resolve_list_id(
+            coordinator, call.data.get(ATTR_LIST_ID), product_id=product_id
+        )
 
         unit_raw = call.data.get(ATTR_UNIT)
         unit = normalize_unit(unit_raw) if unit_raw is not None else None
         placement_raw = call.data.get(ATTR_PLACEMENT)
-        placement = normalize_placement(placement_raw) if placement_raw is not None else None
+        placement = (
+            normalize_placement(placement_raw) if placement_raw is not None else None
+        )
 
         await coordinator.api_client.update_item_in_shopping_list(
             shopping_list_id=list_id,
@@ -237,7 +246,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         """Delete an item from a shopping list and return status."""
         coordinator = _get_coordinator(hass, call.data.get(ATTR_ENTRY_ID))
         product_id = call.data[ATTR_PRODUCT_ID]
-        list_id = _resolve_list_id(coordinator, call.data.get(ATTR_LIST_ID), product_id=product_id)
+        list_id = _resolve_list_id(
+            coordinator, call.data.get(ATTR_LIST_ID), product_id=product_id
+        )
 
         await coordinator.api_client.delete_item_from_shopping_list(
             shopping_list_id=list_id,
@@ -253,7 +264,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         shopping_lists = coordinator.data.get("shopping_lists") or []
         if isinstance(shopping_lists, dict):
-            shopping_lists = shopping_lists.get("shoppingLists") or shopping_lists.get("lists") or []
+            shopping_lists = (
+                shopping_lists.get("shoppingLists") or shopping_lists.get("lists") or []
+            )
 
         checked_ids = []
         for s_list in shopping_lists:
@@ -294,7 +307,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 )
             elif isinstance(api_response, (str, int)):
                 new_list_id = str(api_response)
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001
             _LOGGER.warning("Failed to create shopping list on Coop: %s", err)
 
         # 2. Om ID inte returnerades direkt i POST-svaret, gör en sökning bland listorna
@@ -315,7 +328,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
                 # Leta efter exakt namnmatchning
                 for s in shopping_lists:
-                    if isinstance(s, dict) and str(s.get("name")).strip().lower() == name.strip().lower():
+                    if (
+                        isinstance(s, dict)
+                        and str(s.get("name")).strip().lower() == name.strip().lower()
+                    ):
                         new_list_id = (
                             s.get("id")
                             or s.get("shoppingListID")
@@ -334,7 +350,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                             or last_item.get("shoppingListId")
                             or last_item.get("listId")
                         )
-            except Exception as err:
+            except Exception as err:  # noqa: BLE001
                 _LOGGER.warning("Could not fetch fresh lists after creation: %s", err)
 
         await coordinator.async_request_refresh()
@@ -372,33 +388,182 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         offers = await coordinator.api_client.get_personal_offers()
         return {"offers": offers}
 
+    async def handle_get_receipts(call: ServiceCall) -> ServiceResponse:
+        """Fetch recent receipts."""
+        coordinator = _get_coordinator(hass, call.data.get(ATTR_ENTRY_ID))
+        from_date = call.data.get("from_date")
+        to_date = call.data.get("to_date")
+        per_page = call.data.get("per_page", 15)
+
+        try:
+            res = await coordinator.api_client.get_receipts(
+                from_date=from_date, to_date=to_date, per_page=per_page
+            )
+            return {
+                "success": True,
+                "receipts": res.get("data", []),
+                "total": res.get("total", 0),
+            }
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Failed to fetch receipts: %s", err)
+            return {"success": False, "error": str(err)}
+
+    async def handle_download_receipt_pdf(call: ServiceCall) -> ServiceResponse:
+        """Download formal receipt PDF and save locally or return metadata."""
+        coordinator = _get_coordinator(hass, call.data.get(ATTR_ENTRY_ID))
+        receipt_id = call.data["receipt_id"]
+
+        try:
+            pdf_bytes = await coordinator.api_client.get_formal_receipt_pdf(receipt_id)
+
+            dest_dir = hass.config.path("www", "coop_receipts")
+            await hass.async_add_executor_job(os.makedirs, dest_dir, True)
+            file_path = os.path.join(dest_dir, f"kvitto_{receipt_id}.pdf")
+
+            def _save_file() -> None:
+                with open(file_path, "wb") as f:
+                    f.write(pdf_bytes)
+
+            await hass.async_add_executor_job(_save_file)
+
+            url_path = f"/local/coop_receipts/kvitto_{receipt_id}.pdf"
+            return {"success": True, "file_path": file_path, "url": url_path}
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Failed to download receipt PDF: %s", err)
+            return {"success": False, "error": str(err)}
+
+    async def handle_search_recipes(call: ServiceCall) -> ServiceResponse:
+        """Search Coop recipes."""
+        coordinator = _get_coordinator(hass, call.data.get(ATTR_ENTRY_ID))
+        query = call.data.get("query", "")
+        categories = call.data.get("categories")
+
+        try:
+            result = await coordinator.api_client.search_recipes(
+                query=query, categories=categories
+            )
+            return {"success": True, "results": result}
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Failed to search recipes: %s", err)
+            return {"success": False, "error": str(err)}
+
+    async def handle_get_purchase_history(call: ServiceCall) -> ServiceResponse:
+        """Fetch monthly purchase history."""
+        coordinator = _get_coordinator(hass, call.data.get(ATTR_ENTRY_ID))
+        year = call.data.get("year")
+        month = call.data.get("month")
+
+        try:
+            history = await coordinator.api_client.get_purchase_history(
+                year=year, month=month
+            )
+            return {"success": True, "history": history}
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Failed to fetch purchase history: %s", err)
+            return {"success": False, "error": str(err)}
+
     # Register all actions with response support enabled
-    resp_kwargs = {"supports_response": OPTIONAL_RESPONSE} if OPTIONAL_RESPONSE is not None else {}
+    resp_kwargs = (
+        {"supports_response": OPTIONAL_RESPONSE}
+        if OPTIONAL_RESPONSE is not None
+        else {}
+    )
 
     hass.services.async_register(
         DOMAIN, SERVICE_ADD_ITEM, handle_add_item, schema=SCHEMA_ADD_ITEM, **resp_kwargs
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_UPDATE_ITEM, handle_update_item, schema=SCHEMA_UPDATE_ITEM, **resp_kwargs
+        DOMAIN,
+        SERVICE_UPDATE_ITEM,
+        handle_update_item,
+        schema=SCHEMA_UPDATE_ITEM,
+        **resp_kwargs,
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_DELETE_ITEM, handle_delete_item, schema=SCHEMA_DELETE_ITEM, **resp_kwargs
+        DOMAIN,
+        SERVICE_DELETE_ITEM,
+        handle_delete_item,
+        schema=SCHEMA_DELETE_ITEM,
+        **resp_kwargs,
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_CLEAR_COMPLETED, handle_clear_completed, schema=SCHEMA_CLEAR_COMPLETED, **resp_kwargs
+        DOMAIN,
+        SERVICE_CLEAR_COMPLETED,
+        handle_clear_completed,
+        schema=SCHEMA_CLEAR_COMPLETED,
+        **resp_kwargs,
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_CREATE_SHOPPING_LIST, handle_create_list, schema=SCHEMA_CREATE_LIST, **resp_kwargs
+        DOMAIN,
+        SERVICE_CREATE_SHOPPING_LIST,
+        handle_create_list,
+        schema=SCHEMA_CREATE_LIST,
+        **resp_kwargs,
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_DELETE_SHOPPING_LIST, handle_delete_list, schema=SCHEMA_DELETE_LIST, **resp_kwargs
+        DOMAIN,
+        SERVICE_DELETE_SHOPPING_LIST,
+        handle_delete_list,
+        schema=SCHEMA_DELETE_LIST,
+        **resp_kwargs,
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_GET_STORE_INFO, handle_get_store_info, schema=SCHEMA_STORE, **resp_kwargs
+        DOMAIN,
+        SERVICE_GET_STORE_INFO,
+        handle_get_store_info,
+        schema=SCHEMA_STORE,
+        **resp_kwargs,
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_GET_STORE_OFFERS, handle_get_store_offers, schema=SCHEMA_STORE, **resp_kwargs
+        DOMAIN,
+        SERVICE_GET_STORE_OFFERS,
+        handle_get_store_offers,
+        schema=SCHEMA_STORE,
+        **resp_kwargs,
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_GET_PERSONAL_OFFERS, handle_get_personal_offers, schema=SCHEMA_PERSONAL_OFFERS, **resp_kwargs
+        DOMAIN,
+        SERVICE_GET_PERSONAL_OFFERS,
+        handle_get_personal_offers,
+        schema=SCHEMA_PERSONAL_OFFERS,
+        **resp_kwargs,
+    )
+    hass.services.async_register(
+        DOMAIN, "get_receipts", handle_get_receipts, schema=vol.Schema({...})
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "download_receipt_pdf",
+        handle_download_receipt_pdf,
+        schema=vol.Schema(
+            {
+                vol.Required("receipt_id"): cv.string,
+                vol.Optional(ATTR_ENTRY_ID): cv.string,
+            }
+        ),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "search_recipes",
+        handle_search_recipes,
+        schema=vol.Schema(
+            {
+                vol.Optional("query", default=""): cv.string,
+                vol.Optional("categories"): [cv.string],
+                vol.Optional(ATTR_ENTRY_ID): cv.string,
+            }
+        ),
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "get_purchase_history",
+        handle_get_purchase_history,
+        schema=vol.Schema(
+            {
+                vol.Optional("year"): cv.positive_int,
+                vol.Optional("month"): cv.positive_int,
+                vol.Optional(ATTR_ENTRY_ID): cv.string,
+            }
+        ),
     )

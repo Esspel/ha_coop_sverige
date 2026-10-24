@@ -26,6 +26,7 @@ SHOPPING_LIST_BASE = "https://proxy.api.coop.se/digital/shoppinglist"
 PERSONAL_OFFERS_BASE = "https://external.api.coop.se/digital/personaloffers"
 STORE_BASE = "https://proxy.api.coop.se/external/store"
 OFFERS_BASE = "https://external.api.coop.se/dke/offers"
+RECEIPT_BASE = "https://api.betala.coop.se/kvitto/rest"
 
 # API Versions
 API_V1 = "v1"

@@ -1,6 +1,5 @@
 """Sensors for Coop Sverige."""
 
-import datetime as dt
 import logging
 from typing import Any
 
@@ -11,7 +10,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo, DeviceEntryType
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -27,7 +26,12 @@ def parse_store_deals(raw_data: Any) -> list[dict[str, Any]]:
     if isinstance(raw_data, list):
         groups = raw_data
     elif isinstance(raw_data, dict):
-        groups = raw_data.get("sortingGroups") or raw_data.get("offers") or raw_data.get("items") or []
+        groups = (
+            raw_data.get("sortingGroups")
+            or raw_data.get("offers")
+            or raw_data.get("items")
+            or []
+        )
 
     deals: list[dict[str, Any]] = []
     for g in groups:
@@ -36,7 +40,12 @@ def parse_store_deals(raw_data: Any) -> list[dict[str, Any]]:
             if not isinstance(c, dict):
                 continue
             content = c.get("content") or {}
-            title = c.get("heading") or c.get("title") or c.get("name") or content.get("title")
+            title = (
+                c.get("heading")
+                or c.get("title")
+                or c.get("name")
+                or content.get("title")
+            )
             if not title:
                 continue
 
@@ -45,7 +54,11 @@ def parse_store_deals(raw_data: Any) -> list[dict[str, Any]]:
             val = splash.get("value", "")
             unit = splash.get("unit", "")
             tag = splash.get("tag", "")
-            price_display = f"{val} {unit} {tag}".strip() if val else str(price_info.get("price", ""))
+            price_display = (
+                f"{val} {unit} {tag}".strip()
+                if val
+                else str(price_info.get("price", ""))
+            )
 
             articles = []
             for item in c.get("clusterInteriorOffers") or c.get("clusterItems") or []:
@@ -53,31 +66,47 @@ def parse_store_deals(raw_data: Any) -> list[dict[str, Any]]:
                     item_content = item.get("content") or {}
                     vol_parts = []
                     if item_content.get("weightVolume") or item.get("netVolume"):
-                        vol_parts.append(str(item_content.get("weightVolume") or item["netVolume"]))
+                        vol_parts.append(
+                            str(item_content.get("weightVolume") or item["netVolume"])
+                        )
                     if item_content.get("netContentUnit") or item.get("netContentUnit"):
-                        vol_parts.append(str(item_content.get("netContentUnit") or item["netContentUnit"]))
-                    articles.append({
-                        "ean": item.get("externalId") or item_content.get("externalId"),
-                        "volume": " ".join(vol_parts),
-                        "campaign_id": item.get("campaignId") or item.get("id"),
-                        "image_url": item_content.get("imageUrl") or item.get("image"),
-                    })
+                        vol_parts.append(
+                            str(
+                                item_content.get("netContentUnit")
+                                or item["netContentUnit"]
+                            )
+                        )
+                    articles.append(
+                        {
+                            "ean": item.get("externalId")
+                            or item_content.get("externalId"),
+                            "volume": " ".join(vol_parts),
+                            "campaign_id": item.get("campaignId") or item.get("id"),
+                            "image_url": item_content.get("imageUrl")
+                            or item.get("image"),
+                        }
+                    )
 
-            deals.append({
-                "title": title,
-                "price": price_display,
-                "unified_splash": splash,
-                "is_member_price": bool(price_info.get("isMemberPrice")),
-                "deal_type": price_info.get("dealType"),
-                "limit": price_info.get("dealOfferLimitText") or price_info.get("limit"),
-                "comparative_price": (
-                    price_info.get("comparativePriceText")
-                    or price_info.get("enrichedComparisonPrice")
-                    or content.get("comparativePriceText")
-                ),
-                "image_url": c.get("imageUrl") or content.get("imageUrl") or c.get("image"),
-                "articles": articles,
-            })
+            deals.append(
+                {
+                    "title": title,
+                    "price": price_display,
+                    "unified_splash": splash,
+                    "is_member_price": bool(price_info.get("isMemberPrice")),
+                    "deal_type": price_info.get("dealType"),
+                    "limit": price_info.get("dealOfferLimitText")
+                    or price_info.get("limit"),
+                    "comparative_price": (
+                        price_info.get("comparativePriceText")
+                        or price_info.get("enrichedComparisonPrice")
+                        or content.get("comparativePriceText")
+                    ),
+                    "image_url": c.get("imageUrl")
+                    or content.get("imageUrl")
+                    or c.get("image"),
+                    "articles": articles,
+                }
+            )
 
     return deals
 
@@ -223,7 +252,9 @@ class CoopBaseSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information linking all entities to a single Coop device."""
-        member_id = self.coordinator.data.get("member_id") if self.coordinator.data else None
+        member_id = (
+            self.coordinator.data.get("member_id") if self.coordinator.data else None
+        )
         name = f"Coop Sverige ({member_id})" if member_id else "Coop Sverige"
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry_id)},
@@ -276,7 +307,9 @@ class CoopBonusSensor(CoopBaseSensor):
             return None
         value = data.get(self._key)
         if self._is_text:
-            return str(value) if value is not None and str(value).strip() != "" else None
+            return (
+                str(value) if value is not None and str(value).strip() != "" else None
+            )
         if value is None:
             return None
         if isinstance(value, (int, float)):
@@ -384,5 +417,53 @@ class CoopShoppingListsSummarySensor(CoopBaseSensor):
             return 0
         shopping_lists = self.coordinator.data.get("shopping_lists") or []
         if isinstance(shopping_lists, dict):
-            shopping_lists = shopping_lists.get("shoppingLists") or shopping_lists.get("lists") or []
+            shopping_lists = (
+                shopping_lists.get("shoppingLists") or shopping_lists.get("lists") or []
+            )
         return len(shopping_lists) if isinstance(shopping_lists, list) else 0
+
+
+class CoopReceiptsSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
+    """Representation of Coop receipts sensor."""
+
+    _attr_has_entity_name = True
+
+    def __init__(self, coordinator: CoopCoordinator, entry_id: str) -> None:
+        """Initialize the receipts sensor."""
+        super().__init__(coordinator)
+        self._entry_id = entry_id
+        self._attr_unique_id = f"{entry_id}_receipts"
+        self._attr_name = "Kvitton"
+        self._attr_icon = "mdi:receipt"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        member_id = (
+            self.coordinator.data.get("member_id") if self.coordinator.data else None
+        )
+        name = f"Coop Sverige ({member_id})" if member_id else "Coop Sverige"
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry_id)},
+            name=name,
+            manufacturer="Coop Sverige",
+            model="Coop Medlem & Butik",
+        )
+
+    @property
+    def native_value(self) -> int:
+        """Return total number of receipts."""
+        if not self.coordinator.data:
+            return 0
+        return self.coordinator.data.get(
+            "total_receipts", len(self.coordinator.data.get("receipts", []))
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return receipt list as attribute."""
+        if not self.coordinator.data:
+            return {"receipts": []}
+        return {
+            "receipts": self.coordinator.data.get("receipts", []),
+        }

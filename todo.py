@@ -7,10 +7,10 @@ import re
 from typing import Any
 
 from homeassistant.components.todo import (
-    TodoListEntity,
-    TodoListEntityFeature,
     TodoItem,
     TodoItemStatus,
+    TodoListEntity,
+    TodoListEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -18,7 +18,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, VALID_PLACEMENTS, VALID_UNITS
+from .const import DOMAIN, VALID_UNITS
 from .coordinator import CoopCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -39,10 +39,7 @@ async def async_setup_entry(
         raw = coordinator.data.get("shopping_lists") or []
         if isinstance(raw, dict):
             return (
-                raw.get("shoppingLists")
-                or raw.get("lists")
-                or raw.get("items")
-                or []
+                raw.get("shoppingLists") or raw.get("lists") or raw.get("items") or []
             )
         if isinstance(raw, list):
             return raw
@@ -129,7 +126,9 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information linking this list to the Coop Sverige device."""
-        member_id = self.coordinator.data.get("member_id") if self.coordinator.data else None
+        member_id = (
+            self.coordinator.data.get("member_id") if self.coordinator.data else None
+        )
         name = f"Coop Sverige ({member_id})" if member_id else "Coop Sverige"
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry_id)},
@@ -162,11 +161,16 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
             raw = self.coordinator.data.get("shopping_lists") or []
             if isinstance(raw, list) and raw:
                 first = raw[0]
-                new_id = str(first.get("id") or first.get("shoppingListID") or first.get("shoppingListId") or "")
+                new_id = str(
+                    first.get("id")
+                    or first.get("shoppingListID")
+                    or first.get("shoppingListId")
+                    or ""
+                )
                 if new_id:
                     self._list_id = new_id
                     return new_id
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             _LOGGER.error("Could not create fallback shopping list on Coop: %s", e)
 
         return ""
@@ -180,10 +184,7 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         shopping_lists = []
         if isinstance(raw, dict):
             shopping_lists = (
-                raw.get("shoppingLists")
-                or raw.get("lists")
-                or raw.get("items")
-                or []
+                raw.get("shoppingLists") or raw.get("lists") or raw.get("items") or []
             )
         elif isinstance(raw, list):
             shopping_lists = raw
@@ -245,7 +246,9 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
                 TodoItem(
                     summary=name,
                     uid=p_id,
-                    status=TodoItemStatus.COMPLETED if is_checked else TodoItemStatus.NEEDS_ACTION,
+                    status=TodoItemStatus.COMPLETED
+                    if is_checked
+                    else TodoItemStatus.NEEDS_ACTION,
                     description=description,
                 )
             )
@@ -267,7 +270,9 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
 
         sorted_units = sorted(VALID_UNITS, key=len, reverse=True)
         units_pattern = "|".join(re.escape(u) for u in sorted_units)
-        match = re.match(rf"^(\d+(?:[.,]\d+)?)\s*({units_pattern})\s+(.+)$", raw_text, re.IGNORECASE)
+        match = re.match(
+            rf"^(\d+(?:[.,]\d+)?)\s*({units_pattern})\s+(.+)$", raw_text, re.IGNORECASE
+        )
         if match:
             quantity = match.group(1).replace(",", ".")
             unit = match.group(2).lower()
@@ -304,8 +309,14 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
                     existing_product = p
                     break
 
-        is_checked = (item.status == TodoItemStatus.COMPLETED) if item.status is not None else None
-        product_name = item.summary if item.summary else existing_product.get("name", "Vara")
+        is_checked = (
+            (item.status == TodoItemStatus.COMPLETED)
+            if item.status is not None
+            else None
+        )
+        product_name = (
+            item.summary if item.summary else existing_product.get("name", "Vara")
+        )
 
         await self.coordinator.api_client.update_item_in_shopping_list(
             shopping_list_id=target_list_id,
@@ -342,7 +353,11 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
             return {}
 
         products = list_data.get("products") or []
-        checked_count = sum(1 for p in products if isinstance(p, dict) and (p.get("isChecked") or p.get("checked")))
+        checked_count = sum(
+            1
+            for p in products
+            if isinstance(p, dict) and (p.get("isChecked") or p.get("checked"))
+        )
         unchecked_count = len(products) - checked_count
 
         return {
