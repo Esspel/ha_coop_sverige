@@ -335,11 +335,17 @@ class CoopPersonalOffersSensor(CoopBaseSensor):
 
     @property
     def native_value(self) -> int:
-        """Return the count of active personal offers."""
-        if not self.coordinator.data:
-            return 0
-        active_offers = self.coordinator.data.get("active_personal_offers") or []
-        return len(active_offers)
+        """Return the number of active personal offers."""
+        offers = self.coordinator.data.get("active_personal_offers", [])
+        return len(offers)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return personal offers list as attributes."""
+        return {
+            "personal_offers": self.coordinator.data.get("personal_offers", []),
+            "active_offers": self.coordinator.data.get("active_personal_offers", []),
+        }
 
 
 class CoopFavoriteStoreSensor(CoopBaseSensor):
@@ -453,18 +459,12 @@ class CoopReceiptsSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
 
     @property
     def native_value(self) -> int:
-        """Return total number of receipts."""
-        if not self.coordinator.data:
-            return 0
-        return self.coordinator.data.get(
-            "total_receipts", len(self.coordinator.data.get("receipts", []))
-        )
+        """Return total receipts count."""
+        return self.coordinator.data.get("total_receipts", 0)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return receipt list as attribute."""
-        if not self.coordinator.data:
-            return {"receipts": []}
+        """Return receipt history list as attribute."""
         return {
             "receipts": self.coordinator.data.get("receipts", []),
         }
