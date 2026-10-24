@@ -7,16 +7,32 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .client import CoopAPIClient, CoopAPIError, CoopAuthError
-from .const import CONF_SCAN_INTERVAL, CONF_STORE_LEDGER_ACCOUNT, DEFAULT_SCAN_INTERVAL
+from .const import (
+    CONF_SCAN_INTERVAL,
+    CONF_SESSION_COOKIE,
+    CONF_STORE_LEDGER_ACCOUNT,
+    CONF_SUB_KEY,
+    DEFAULT_SCAN_INTERVAL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """DataUpdateCoordinator for Coop Sverige."""
+
+    async def _async_save_refresh_token(self, new_token: str) -> None:
+        """Save rotated Betala refresh token to config entry data."""
+        if not self.config_entry:
+            return
+        new_data = {**self.config_entry.data, "betala_refresh_token": new_token}
+        self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
+        _LOGGER.info("Coop Betala refresh token automatically rotated and saved to config entry.")
 
     def __init__(
         self,
@@ -25,8 +41,14 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         entry: ConfigEntry,
     ) -> None:
         """Initialize the coordinator."""
-        self.api_client = api_client
         self.config_entry = entry
+        self.api_client = CoopAPIClient(
+            session=async_get_clientsession(hass),
+            session_cookie=entry.data.get(CONF_SESSION_COOKIE),
+            sub_key=entry.data.get(CONF_SUB_KEY),
+            betala_refresh_token=entry.data.get("betala_refresh_token"),
+            token_update_callback=self._async_save_refresh_token,
+        )
 
         interval_mins = (
             entry.options.get(CONF_SCAN_INTERVAL)
@@ -48,8 +70,8 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             balance = await self.api_client.get_loyalty_balance()
             yearly = await self.api_client.get_loyalty_summary_yearly()
         except CoopAuthError as e:
-            _LOGGER.error("Authentication failed: %s", e)
-            raise UpdateFailed(f"Auth failed: {e}") from e
+            _LOGGER.error("Coop authentication failed (cookie expired): %s", e)
+            raise ConfigEntryAuthFailed(f"Authentication failed: {e}") from e
         except CoopAPIError as e:
             raise UpdateFailed(f"Failed to fetch loyalty data: {e}") from e
         except Exception as e:
@@ -104,7 +126,7 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     primary_store_info = await self.api_client.get_store_info(
                         manual_ledger_str
                     )
-                except Exception as err:  # noqa: BLE001  # noqa: BLE001
+                except Exception as err:  # noqa: BLE001
                     _LOGGER.warning(
                         "Failed to fetch store info for manual ledger %s: %s",
                         manual_ledger_str,
@@ -119,7 +141,7 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     primary_store_offers = await self.api_client.get_sorting_groups(
                         manual_ledger_str
                     )
-                except Exception as err:  # noqa: BLE001  # noqa: BLE001
+                except Exception as err:  # noqa: BLE001
                     _LOGGER.warning(
                         "Failed to fetch sorting groups for manual ledger %s: %s",
                         manual_ledger_str,
@@ -160,7 +182,7 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             favorite_stores = (
                                 nearby.get("stores") or nearby.get("items") or []
                             )
-                    except Exception as err:  # noqa: BLE001  # noqa: BLE001
+                    except Exception as err:  # noqa: BLE001
                         _LOGGER.debug("Could not fetch nearby stores: %s", err)
 
                 if favorite_stores:
@@ -176,7 +198,7 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             primary_store_info = await self.api_client.get_store_info(
                                 ledger
                             )
-                        except Exception as err:  # noqa: BLE001  # noqa: BLE001
+                        except Exception as err:  # noqa: BLE001
                             _LOGGER.warning(
                                 "Failed to fetch store info for %s: %s", ledger, err
                             )
@@ -185,7 +207,7 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             primary_store_offers = (
                                 await self.api_client.get_sorting_groups(ledger)
                             )
-                        except Exception as err:  # noqa: BLE001  # noqa: BLE001
+                        except Exception as err:  # noqa: BLE001
                             _LOGGER.warning(
                                 "Failed to fetch sorting groups for store %s: %s",
                                 ledger,
@@ -329,9 +351,6 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             **bonus_info,
         }
 
-        _LOGGER.debug("Coop Sverige data updated successfully")
-        _LOGGER.debug("RAW balance response: %s", balance)
-        _LOGGER.debug("RAW yearly response: %s", yearly)
         return data
 
 

@@ -1,4 +1,4 @@
-"""Todo platform for Coop Sverige shopping lists."""
+"""Todo platform for Coop Sverige shopping lists with auto-categorization."""
 
 from __future__ import annotations
 
@@ -22,6 +22,54 @@ from .const import DOMAIN, VALID_UNITS
 from .coordinator import CoopCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+# Smart svensk ordlista för autokategorisering till Coops avdelningar
+PLACEMENT_KEYWORDS = {
+    "Mejeri": [
+        "mjölk", "ost", "smör", "grädde", "yoghurt", "fil", "keso", 
+        "creme fraiche", "fetaost", "halloumi", "ägg", "kvarg", "chark"
+    ],
+    "Frukt och grönt": [
+        "banan", "äpple", "tomat", "gurka", "sallad", "lök", "vitlök", 
+        "potatis", "morot", "paprika", "avokado", "citron", "druvor", 
+        "chili", "päron", "spenat", "broccoli", "champinjoner"
+    ],
+    "Bröd": [
+        "bröd", "limpa", "fralla", "knäckebröd", "tortilla", "pitabröd", 
+        "skorpor", "rostbröd", "baguette"
+    ],
+    "Djupfryst": [
+        "pizza", "glass", "ärtor", "pommes", "fryst", "kycklingbitar", 
+        "fiskpinnar", "flygande jacob"
+    ],
+    "Konserver · Skafferi": [
+        "krossade tomater", "tonfisk", "pasta", "ris", "mjöl", "socker", 
+        "kaffe", "te", "havregryn", "olja", "kex", "majs", "bönor", 
+        "ketchup", "senap", "soja", "nudlar", "tacosås"
+    ],
+    "Kryddor · Smaksättare": [
+        "salt", "peppar", "basilika", "oregano", "curry", "buljong", 
+        "kanel", "paprikapulver", "tackrydda"
+    ],
+    "Drycker": [
+        "läsk", "juice", "vatten", "cola", "fanta", "sprite", 
+        "energidryck", "cider", "öl"
+    ],
+    "Städa · Tvätta · Diska": [
+        "diskmedel", "tvättmedel", "sköljmedel", "toalettpapper", 
+        "hushållspapper", "schampo", "tvål", "tandkräm", "deo", "vatten"
+    ],
+}
+
+
+def _detect_placement(name: str) -> str:
+    """Automatically detect Coop placement based on item name keywords."""
+    name_lower = name.lower()
+    for placement, keywords in PLACEMENT_KEYWORDS.items():
+        for kw in keywords:
+            if kw in name_lower:
+                return placement
+    return "Övrigt"
 
 
 async def async_setup_entry(
@@ -234,17 +282,15 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
             p_id = str(p.get("ID") or p.get("id") or p.get("productId") or "")
             name = p.get("Name") or p.get("name") or p.get("text") or "Vara"
             is_checked = bool(p.get("Checked") or p.get("isChecked") or p.get("checked", False))
+            placement = p.get("Placement") or p.get("placement") or "Övrigt"
 
-            desc_parts: list[str] = []
+            desc_parts: list[str] = [f"Avdelning: {placement}"]
             qty = p.get("Quantity") or p.get("quantity")
             unit = p.get("Unit") or p.get("unit")
             if qty:
-                desc_parts.append(f"{qty} {unit or ''}".strip())
-            placement = p.get("Placement") or p.get("placement")
-            if placement:
-                desc_parts.append(f"Avdelning: {placement}")
+                desc_parts.insert(0, f"{qty} {unit or ''}".strip())
 
-            description = " | ".join(desc_parts) if desc_parts else None
+            description = " | ".join(desc_parts)
 
             items.append(
                 TodoItem(
@@ -260,7 +306,7 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         return items
 
     async def async_create_todo_item(self, item: TodoItem) -> None:
-        """Create item on Coop list."""
+        """Create item on Coop list with auto-categorization."""
         target_list_id = await self._ensure_real_list_id()
         if not target_list_id:
             _LOGGER.error("Cannot create item: No valid shopping list ID available")
@@ -269,9 +315,9 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         raw_text = item.summary.strip()
         quantity = "1"
         unit = ""
-        placement = ""
         name = raw_text
 
+        # Parsa mängd och enhet om det skrivs in (t.ex. "2 st mjölk")
         sorted_units = sorted(VALID_UNITS, key=len, reverse=True)
         units_pattern = "|".join(re.escape(u) for u in sorted_units)
         match = re.match(
@@ -287,6 +333,16 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
                 quantity = num_match.group(1).replace(",", ".")
                 name = num_match.group(2).strip()
 
+        # Om användaren angett avdelning i beskrivningen, använd den, annars autodetektera
+        placement = ""
+        if item.description and "Avdelning:" in item.description:
+            parts = item.description.split("Avdelning:")
+            if len(parts) > 1:
+                placement = parts[1].strip().split("|")[0].strip()
+
+        if not placement:
+            placement = _detect_placement(name)
+
         await self.coordinator.api_client.add_item_to_shopping_list(
             shopping_list_id=target_list_id,
             name=name,
@@ -297,7 +353,7 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         await self.coordinator.async_request_refresh()
 
     async def async_update_todo_item(self, item: TodoItem) -> None:
-        """Update item state or text."""
+        """Update item state, text, or category."""
         if not item.uid:
             return
 
@@ -322,13 +378,22 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
             item.summary if item.summary else existing_product.get("Name") or existing_product.get("name", "Vara")
         )
 
+        # Kolla om beskrivningen uppdaterats med ny avdelning
+        placement = existing_product.get("Placement") or existing_product.get("placement") or ""
+        if item.description and "Avdelning:" in item.description:
+            parts = item.description.split("Avdelning:")
+            if len(parts) > 1:
+                new_placement = parts[1].strip().split("|")[0].strip()
+                if new_placement:
+                    placement = new_placement
+
         await self.coordinator.api_client.update_item_in_shopping_list(
             shopping_list_id=target_list_id,
             product_id=item.uid,
             name=product_name,
             unit=existing_product.get("Unit") or existing_product.get("unit"),
             quantity=existing_product.get("Quantity") or existing_product.get("quantity"),
-            placement=existing_product.get("Placement") or existing_product.get("placement"),
+            placement=placement,
             external_ingredient_id=existing_product.get("ExternalIngredientID") or existing_product.get("externalIngredientID"),
             is_checked=is_checked,
         )
@@ -352,25 +417,3 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
             product_id=uids,
         )
         await self.coordinator.async_request_refresh()
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Extra state info."""
-        list_data = self._get_list_data()
-        if not list_data:
-            return {}
-
-        products = list_data.get("Products") or list_data.get("products") or []
-        checked_count = sum(
-            1
-            for p in products
-            if isinstance(p, dict) and (p.get("Checked") or p.get("isChecked") or p.get("checked"))
-        )
-        unchecked_count = len(products) - checked_count
-
-        return {
-            "list_id": self._list_id,
-            "total_items": len(products),
-            "unchecked_items": unchecked_count,
-            "checked_items": checked_count,
-        }

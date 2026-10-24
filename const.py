@@ -19,6 +19,7 @@ CLIENT_ID = "coopse_prod"
 # Default subscription key discovered from network traffic
 DEFAULT_SUB_KEY = "3becf0ce306f41a1ae94077c16798187"
 RECEIPT_SUB_KEY = "1859ada0cc7f4a60b6b9a60a60adc75d"
+STORE_SUB_KEY = "f3f6b13120404943b4258d17a9cdf45a"
 
 # Supported Home Assistant platforms
 PLATFORMS = ["sensor", "todo"]

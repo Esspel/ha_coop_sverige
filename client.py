@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import urllib.parse
 from datetime import UTC, datetime, timedelta
@@ -13,6 +14,7 @@ from .const import (
     RECEIPT_SUB_KEY,
     SHOPPING_LIST_BASE,
     STORE_BASE,
+    STORE_SUB_KEY,
     TOKEN_URL,
 )
 
@@ -36,11 +38,13 @@ class CoopAPIClient:
         session_cookie: str,
         sub_key: str | None = None,
         betala_refresh_token: str | None = None,
+        token_update_callback: Any | None = None,
     ) -> None:
         """Initialize the API client."""
         self.session = session
         self._session_cookie = session_cookie
         self._betala_refresh_token = betala_refresh_token
+        self._token_update_callback = token_update_callback
         self._betala_access_token: str | None = None
         self._betala_token_expires: datetime = datetime.min
         self._sub_key = (
@@ -86,8 +90,13 @@ class CoopAPIClient:
                 expires_in = data.get("expires_in", 3600)
                 self._betala_token_expires = datetime.now(tz=UTC) + timedelta(seconds=expires_in)
                 
-                if new_rt := data.get("refresh_token"):
+                if (new_rt := data.get("refresh_token")) and new_rt != self._betala_refresh_token:
                     self._betala_refresh_token = new_rt
+                    if self._token_update_callback:
+                        if asyncio.iscoroutinefunction(self._token_update_callback):
+                            await self._token_update_callback(new_rt)
+                        else:
+                            self._token_update_callback(new_rt)
 
                 return self._betala_access_token
         except Exception as err:  # noqa: BLE001
@@ -95,9 +104,11 @@ class CoopAPIClient:
             return None
 
     def _get_sub_key_for_url(self, url: str) -> str:
-        """Return the correct subscription key based on target API domain."""
-        if "proxy.api.coop.se" in url or "api.betala.coop.se" in url:
+        """Return the correct subscription key based on target API domain and path."""
+        if "api.betala.coop.se" in url or "/digital/shoppinglist" in url:
             return RECEIPT_SUB_KEY
+        if "/external/store" in url or "dke/offers" in url:
+            return STORE_SUB_KEY
         return self._sub_key
 
     async def _async_refresh_token(self) -> None:
@@ -165,11 +176,20 @@ class CoopAPIClient:
 
         sub_key = self._get_sub_key_for_url(url)
         headers = kwargs.get("headers", {})
+        
+        # Använd Coop-appens User-Agent för proxy-, butiks- och betala-anrop
+        user_agent = (
+            "coopapp-ios-7.34"
+            if "proxy.api.coop.se" in url or "api.betala.coop.se" in url
+            else "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        )
+
         headers.update(
             {
                 "Authorization": f"Bearer {self._access_token}",
                 "Ocp-Apim-Subscription-Key": sub_key,
                 "Accept": "application/json",
+                "User-Agent": user_agent,
             }
         )
         kwargs["headers"] = headers

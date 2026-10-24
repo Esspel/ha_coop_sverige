@@ -149,6 +149,55 @@ class CoopConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user", data_schema=_get_user_schema(), errors=errors
         )
 
+    async def async_step_reauth(
+        self, entry_data: dict[str, Any]
+    ) -> FlowResult:
+        """Handle re-authentication when cookie is invalid/expired."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Dialog to enter new session cookie during reauth."""
+        errors: dict[str, str] = {}
+        conf_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+
+        if user_input is not None:
+            session_cookie = user_input[CONF_SESSION_COOKIE].strip()
+            betala_refresh_token = user_input.get(CONF_BETALA_REFRESH_TOKEN, "").strip()
+
+            try:
+                result = await _validate_cookie(self.hass, session_cookie)
+                result.get("email", "")
+            except ValueError:
+                errors["base"] = "invalid_cookie"
+            except Exception:  # noqa: BLE001
+                errors["base"] = "cannot_connect"
+
+            if not errors and conf_entry:
+                new_data = {
+                    **conf_entry.data,
+                    CONF_SESSION_COOKIE: session_cookie,
+                }
+                if betala_refresh_token:
+                    new_data[CONF_BETALA_REFRESH_TOKEN] = betala_refresh_token
+
+                self.hass.config_entries.async_update_entry(conf_entry, data=new_data)
+                await self.hass.config_entries.async_reload(conf_entry.entry_id)
+                return self.async_abort(reason="reauth_successful")
+
+        old_cookie = conf_entry.data.get(CONF_SESSION_COOKIE, "") if conf_entry else ""
+        old_token = conf_entry.data.get(CONF_BETALA_REFRESH_TOKEN, "") if conf_entry else ""
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=_get_user_schema(
+                default_cookie=old_cookie,
+                default_betala_refresh_token=old_token,
+            ),
+            errors=errors,
+        )
+
     @staticmethod
     @callback
     def async_get_options_flow(
