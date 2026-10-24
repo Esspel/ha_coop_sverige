@@ -34,79 +34,119 @@ def parse_store_deals(raw_data: Any) -> list[dict[str, Any]]:
         )
 
     deals: list[dict[str, Any]] = []
+
+    def _build_deal_from_obj(obj: dict[str, Any], parent: dict[str, Any] | None = None) -> dict[str, Any] | None:
+        if not isinstance(obj, dict):
+            return None
+        parent = parent or {}
+        content = obj.get("content") or parent.get("content") or {}
+        title = (
+            obj.get("heading")
+            or obj.get("title")
+            or obj.get("name")
+            or content.get("title")
+            or parent.get("heading")
+            or parent.get("title")
+            or parent.get("name")
+            or (parent.get("content") or {}).get("title")
+        )
+        if not title:
+            return None
+
+        price_info = obj.get("priceInformation") or parent.get("priceInformation") or {}
+        splash = price_info.get("unifiedSplash") or {}
+        if not splash and isinstance(parent.get("priceInformation"), dict):
+            splash = parent.get("priceInformation", {}).get("unifiedSplash") or {}
+        val = splash.get("value", "")
+        unit = splash.get("unit", "")
+        tag = splash.get("tag", "")
+        price_display = (
+            f"{val} {unit} {tag}".strip()
+            if val
+            else str(price_info.get("price") or price_info.get("discountValue") or "")
+        )
+
+        articles = []
+        for item in obj.get("clusterInteriorOffers") or obj.get("clusterItems") or parent.get("clusterInteriorOffers") or parent.get("clusterItems") or []:
+            if isinstance(item, dict) and item is not obj:
+                item_content = item.get("content") or {}
+                vol_parts = []
+                if item_content.get("weightVolume") or item.get("netVolume"):
+                    vol_parts.append(str(item_content.get("weightVolume") or item.get("netVolume")))
+                if item_content.get("netContentUnit") or item.get("netContentUnit"):
+                    vol_parts.append(str(item_content.get("netContentUnit") or item.get("netContentUnit")))
+                articles.append(
+                    {
+                        "ean": item.get("externalId") or item_content.get("externalId"),
+                        "volume": " ".join(vol_parts).strip(),
+                        "campaign_id": item.get("campaignId") or item.get("id"),
+                        "image_url": item_content.get("imageUrl") or item.get("image"),
+                        "title": item_content.get("title") or item.get("title"),
+                    }
+                )
+
+        image_url = (
+            obj.get("imageUrl")
+            or content.get("imageUrl")
+            or obj.get("image")
+            or parent.get("imageUrl")
+            or (parent.get("content") or {}).get("imageUrl")
+            or parent.get("image")
+        )
+
+        return {
+            "id": obj.get("id") or parent.get("id"),
+            "parent_id": parent.get("id") if parent else None,
+            "title": title,
+            "brand": content.get("brand") or (parent.get("content") or {}).get("brand"),
+            "description": content.get("description") or (parent.get("content") or {}).get("description"),
+            "price": price_display,
+            "price_information": price_info,
+            "unified_splash": splash,
+            "is_member_price": bool(price_info.get("isMemberPrice")),
+            "deal_type": price_info.get("dealType"),
+            "limit": price_info.get("dealOfferLimitText")
+            or price_info.get("limit")
+            or (parent.get("priceInformation") or {}).get("dealOfferLimitText"),
+            "comparative_price": (
+                price_info.get("comparativePriceText")
+                or price_info.get("enrichedComparisonPrice")
+                or content.get("comparativePriceText")
+                or (parent.get("priceInformation") or {}).get("comparativePriceText")
+            ),
+            "image_url": image_url,
+            "articles": articles,
+            "amount_information": content.get("amountInformation") or (parent.get("content") or {}).get("amountInformation"),
+            "external_id": obj.get("externalId") or content.get("externalId"),
+            "category_team": obj.get("categoryTeam") or parent.get("categoryTeam"),
+            "category_group": obj.get("categoryGroup") or parent.get("categoryGroup"),
+            "week_number": obj.get("weekNumber") or parent.get("weekNumber"),
+            "campaign_start_date": obj.get("campaignStartDate") or parent.get("campaignStartDate"),
+            "campaign_end_date": obj.get("campaignEndDate") or parent.get("campaignEndDate"),
+            "store_ledger_account_number": obj.get("storeLedgerAccountNumber") or parent.get("storeLedgerAccountNumber"),
+            "channel_codes": obj.get("channelCodes") or parent.get("channelCodes"),
+            "role_descriptions": obj.get("roleDescriptions") or parent.get("roleDescriptions"),
+            "raw": obj,
+        }
+
     for g in groups:
+        if not isinstance(g, dict):
+            continue
         campaigns = g.get("campaigns") or g.get("offers") or g.get("items") or [g]
         for c in campaigns:
             if not isinstance(c, dict):
                 continue
-            content = c.get("content") or {}
-            title = (
-                c.get("heading")
-                or c.get("title")
-                or c.get("name")
-                or content.get("title")
-            )
-            if not title:
+            cluster_items = c.get("clusterInteriorOffers") or c.get("clusterItems") or []
+            if cluster_items:
+                for item in cluster_items:
+                    deal = _build_deal_from_obj(item, parent=c)
+                    if deal:
+                        deals.append(deal)
+                # Also include parent if it has its own distinct offer data not represented? usually parent is container
                 continue
-
-            price_info = c.get("priceInformation") or {}
-            splash = price_info.get("unifiedSplash") or {}
-            val = splash.get("value", "")
-            unit = splash.get("unit", "")
-            tag = splash.get("tag", "")
-            price_display = (
-                f"{val} {unit} {tag}".strip()
-                if val
-                else str(price_info.get("price", ""))
-            )
-
-            articles = []
-            for item in c.get("clusterInteriorOffers") or c.get("clusterItems") or []:
-                if isinstance(item, dict):
-                    item_content = item.get("content") or {}
-                    vol_parts = []
-                    if item_content.get("weightVolume") or item.get("netVolume"):
-                        vol_parts.append(
-                            str(item_content.get("weightVolume") or item["netVolume"])
-                        )
-                    if item_content.get("netContentUnit") or item.get("netContentUnit"):
-                        vol_parts.append(
-                            str(
-                                item_content.get("netContentUnit")
-                                or item["netContentUnit"]
-                            )
-                        )
-                    articles.append(
-                        {
-                            "ean": item.get("externalId")
-                            or item_content.get("externalId"),
-                            "volume": " ".join(vol_parts),
-                            "campaign_id": item.get("campaignId") or item.get("id"),
-                            "image_url": item_content.get("imageUrl")
-                            or item.get("image"),
-                        }
-                    )
-
-            deals.append(
-                {
-                    "title": title,
-                    "price": price_display,
-                    "unified_splash": splash,
-                    "is_member_price": bool(price_info.get("isMemberPrice")),
-                    "deal_type": price_info.get("dealType"),
-                    "limit": price_info.get("dealOfferLimitText")
-                    or price_info.get("limit"),
-                    "comparative_price": (
-                        price_info.get("comparativePriceText")
-                        or price_info.get("enrichedComparisonPrice")
-                        or content.get("comparativePriceText")
-                    ),
-                    "image_url": c.get("imageUrl")
-                    or content.get("imageUrl")
-                    or c.get("image"),
-                    "articles": articles,
-                }
-            )
+            deal = _build_deal_from_obj(c)
+            if deal:
+                deals.append(deal)
 
     return deals
 
