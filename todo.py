@@ -203,18 +203,16 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         self._attr_icon = "mdi:cart-outline"
 
     @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information linking this list to the Coop Sverige device."""
-        member_id = (
-            self.coordinator.data.get("member_id") if self.coordinator.data else None
-        )
-        name = f"Coop Sverige ({member_id})" if member_id else "Coop Sverige"
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry_id)},
-            name=name,
-            manufacturer="Coop Sverige Unofficial",
-            model="Unofficial",
-        )
+    def name(self) -> str | None:
+        """Return the name of the todo list."""
+        list_data = self._get_list_data()
+        if list_data and isinstance(list_data, dict):
+            name = list_data.get("Name") or list_data.get("name") or list_data.get("title")
+            if name:
+                return str(name)
+        if self._list_id == "default_fallback":
+            return "Inköpslista"
+        return f"Inköpslista {self._list_id}"
 
     async def _ensure_real_list_id(self) -> str:
         """Ensure a real shopping list exists on Coop if currently using fallback."""
@@ -290,12 +288,28 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return extra attributes including list ID."""
-        return {
+        """Return extra attributes including list ID and items for card compatibility."""
+        attrs: dict[str, Any] = {
             "id": self._list_id,
             "shopping_list_id": self._list_id,
             "list_id": self._list_id,
         }
+        try:
+            items = []
+            for item in (self.todo_items or []):
+                items.append(
+                    {
+                        "id": item.uid,
+                        "summary": item.summary,
+                        "name": item.summary,
+                        "status": "completed" if item.status == TodoItemStatus.COMPLETED else "needs_action",
+                        "description": item.description or "",
+                    }
+                )
+            attrs["items"] = items
+        except Exception:
+            attrs["items"] = []
+        return attrs
 
     @property
     def todo_items(self) -> list[TodoItem] | None:

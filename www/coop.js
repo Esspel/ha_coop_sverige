@@ -100,9 +100,21 @@ class CoopShoppingListCard extends HTMLElement {
 
   _getCoopTodoEntities() {
     if (!this._hass || !this._hass.states) return [];
-    return Object.values(this._hass.states).filter(
-      (e) => e.entity_id.startsWith('todo.coop_')
+    const entities = Object.values(this._hass.states).filter(
+      (e) => e.entity_id.startsWith('todo.')
     );
+    // Filter to Coop shopping lists (our integration) - be flexible about naming
+    return entities.filter((e) => {
+      if (!e || e.state === 'unavailable' || e.state === 'unknown') return false;
+      const attrs = e.attributes || {};
+      if (attrs.shopping_list_id || attrs.list_id || attrs.id) return true;
+      if (e.entity_id.includes('coop')) return true;
+      if (attrs.integration === 'ha_coop_sverige') return true;
+      // Also check friendly name
+      const fn = (attrs.friendly_name || '').toLowerCase();
+      if (fn.includes('coop') || fn.includes('inköpslista') || fn.includes('shopping')) return true;
+      return false;
+    });
   }
 
   _updateListsDropdown() {
@@ -110,7 +122,16 @@ class CoopShoppingListCard extends HTMLElement {
     const selector = this.querySelector('#list-selector');
     if (!selector) return;
 
-    const currentVal = this.currentListEntityId || (lists[0] ? lists[0].entity_id : '');
+    // If no lists found, keep existing selection or clear
+    if (lists.length === 0) {
+      selector.innerHTML = '';
+      // Don't clear currentListEntityId if it might become available
+      return;
+    }
+
+    const currentVal = this.currentListEntityId && lists.find(l => l.entity_id === this.currentListEntityId) 
+      ? this.currentListEntityId 
+      : lists[0].entity_id;
     this.currentListEntityId = currentVal;
 
     selector.innerHTML = lists
@@ -125,19 +146,27 @@ class CoopShoppingListCard extends HTMLElement {
   _renderItems() {
     const container = this.querySelector('#shopping-list-container');
     const titleEl = this.querySelector('#list-name');
-    if (!container || !this.currentListEntityId) return;
-
-    const listEntity = this._hass.states[this.currentListEntityId];
-    if (!listEntity) {
-      container.innerHTML = '<div class="empty">Ingen lista tillgänglig</div>';
+    if (!container) return;
+    
+    if (!this.currentListEntityId) {
+      container.innerHTML = '<div style="padding: 8px; opacity: 0.7;">Välj en lista från menyn</div>';
+      if (titleEl) titleEl.textContent = 'Ingen lista vald';
       return;
     }
 
-    titleEl.textContent = listEntity.attributes.friendly_name || listEntity.entity_id;
+    const listEntity = this._hass.states[this.currentListEntityId];
+    if (!listEntity || listEntity.state === 'unavailable' || listEntity.state === 'unknown') {
+      container.innerHTML = '<div class="empty">Ingen lista tillgänglig</div>';
+      if (titleEl) titleEl.textContent = listEntity?.attributes?.friendly_name || this.currentListEntityId;
+      return;
+    }
+
+    if (titleEl) titleEl.textContent = listEntity.attributes.friendly_name || listEntity.entity_id;
     const items = listEntity.attributes.items || [];
 
-    if (items.length === 0) {
+    if (!Array.isArray(items) || items.length === 0) {
       container.innerHTML = '<div style="padding: 8px; opacity: 0.7;">Listan är tom</div>';
+      // Bind events even if empty? No need
       return;
     }
 
