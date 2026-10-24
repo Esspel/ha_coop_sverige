@@ -9,7 +9,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import selector
 
 from .const import (
-    CONF_BETALA_TOKEN,
+    CONF_BETALA_REFRESH_TOKEN,
     CONF_EMAIL,
     CONF_NAME,
     CONF_SCAN_INTERVAL,
@@ -27,7 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 
 def _get_user_schema(
     default_cookie: str = "",
-    default_betala_token: str = "",
+    default_betala_refresh_token: str = "",
     default_store: str = "",
     default_interval: int = DEFAULT_SCAN_INTERVAL,
 ) -> vol.Schema:
@@ -37,7 +37,7 @@ def _get_user_schema(
             vol.Required(CONF_SESSION_COOKIE, default=default_cookie): selector(
                 {"text": {"type": "password"}}
             ),
-            vol.Optional(CONF_BETALA_TOKEN, default=default_betala_token): selector(
+            vol.Optional(CONF_BETALA_REFRESH_TOKEN, default=default_betala_refresh_token): selector(
                 {"text": {"type": "password"}}
             ),
             vol.Optional(CONF_STORE_LEDGER_ACCOUNT, default=default_store): selector(
@@ -59,7 +59,7 @@ def _get_user_schema(
 
 def _get_options_schema(
     default_cookie: str = "",
-    default_betala_token: str = "",
+    default_betala_refresh_token: str = "",
     default_store: str = "",
     default_interval: int = DEFAULT_SCAN_INTERVAL,
 ) -> vol.Schema:
@@ -69,7 +69,7 @@ def _get_options_schema(
             vol.Required(CONF_SESSION_COOKIE, default=default_cookie): selector(
                 {"text": {"type": "password"}}
             ),
-            vol.Optional(CONF_BETALA_TOKEN, default=default_betala_token): selector(
+            vol.Optional(CONF_BETALA_REFRESH_TOKEN, default=default_betala_refresh_token): selector(
                 {"text": {"type": "password"}}
             ),
             vol.Optional(CONF_STORE_LEDGER_ACCOUNT, default=default_store): selector(
@@ -114,7 +114,7 @@ class CoopConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             session_cookie = user_input[CONF_SESSION_COOKIE].strip()
-            betala_token = user_input.get(CONF_BETALA_TOKEN, "").strip()
+            betala_refresh_token = user_input.get(CONF_BETALA_REFRESH_TOKEN, "").strip()
             store_ledger = user_input.get(CONF_STORE_LEDGER_ACCOUNT, "").strip()
             scan_interval = user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
@@ -136,7 +136,7 @@ class CoopConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     title=name,
                     data={
                         CONF_SESSION_COOKIE: session_cookie,
-                        CONF_BETALA_TOKEN: betala_token,
+                        CONF_BETALA_REFRESH_TOKEN: betala_refresh_token,
                         CONF_SUB_KEY: DEFAULT_SUB_KEY,
                         CONF_STORE_LEDGER_ACCOUNT: store_ledger if store_ledger else None,
                         CONF_SCAN_INTERVAL: scan_interval,
@@ -188,9 +188,9 @@ class CoopOptionsFlowHandler(config_entries.OptionsFlow):
         cookie = self.config_entry.options.get(
             CONF_SESSION_COOKIE
         ) or self.config_entry.data.get(CONF_SESSION_COOKIE, "")
-        betala_token = self.config_entry.options.get(
-            CONF_BETALA_TOKEN
-        ) or self.config_entry.data.get(CONF_BETALA_TOKEN, "")
+        betala_refresh_token = self.config_entry.options.get(
+            CONF_BETALA_REFRESH_TOKEN
+        ) or self.config_entry.data.get(CONF_BETALA_REFRESH_TOKEN, "")
         store_ledger = self.config_entry.options.get(
             CONF_STORE_LEDGER_ACCOUNT
         ) or self.config_entry.data.get(CONF_STORE_LEDGER_ACCOUNT, "")
@@ -202,7 +202,7 @@ class CoopOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="init",
             data_schema=_get_options_schema(
                 default_cookie=cookie,
-                default_betala_token=betala_token,
+                default_betala_refresh_token=betala_refresh_token,
                 default_store=store_ledger,
                 default_interval=int(scan_interval),
             ),

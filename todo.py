@@ -59,7 +59,8 @@ async def async_setup_entry(
             if not isinstance(s_list, dict):
                 continue
             lid = str(
-                s_list.get("id")
+                s_list.get("ID")
+                or s_list.get("id")
                 or s_list.get("shoppingListID")
                 or s_list.get("shoppingListId")
                 or s_list.get("listId")
@@ -82,7 +83,8 @@ async def async_setup_entry(
             if not isinstance(s_list, dict):
                 continue
             lid = str(
-                s_list.get("id")
+                s_list.get("ID")
+                or s_list.get("id")
                 or s_list.get("shoppingListID")
                 or s_list.get("shoppingListId")
                 or s_list.get("listId")
@@ -146,7 +148,8 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
             res = await self.coordinator.api_client.create_shopping_list("Inköpslista")
             if isinstance(res, dict):
                 new_id = str(
-                    res.get("id")
+                    res.get("ID")
+                    or res.get("id")
                     or res.get("shoppingListID")
                     or res.get("shoppingListId")
                     or res.get("listId")
@@ -156,13 +159,13 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
                     self._list_id = new_id
                     return new_id
 
-            # Hämta färska listor om svaret inte gav ID direkt
             await self.coordinator.async_request_refresh()
             raw = self.coordinator.data.get("shopping_lists") or []
             if isinstance(raw, list) and raw:
                 first = raw[0]
                 new_id = str(
-                    first.get("id")
+                    first.get("ID")
+                    or first.get("id")
                     or first.get("shoppingListID")
                     or first.get("shoppingListId")
                     or ""
@@ -178,7 +181,7 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
     def _get_list_data(self) -> dict[str, Any] | None:
         """Find matching list data."""
         if not self.coordinator.data:
-            return {"id": self._list_id, "name": "Inköpslista", "products": []}
+            return {"ID": self._list_id, "Name": "Inköpslista", "Products": []}
 
         raw = self.coordinator.data.get("shopping_lists") or []
         shopping_lists = []
@@ -193,7 +196,8 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
             if not isinstance(s_list, dict):
                 continue
             lid = str(
-                s_list.get("id")
+                s_list.get("ID")
+                or s_list.get("id")
                 or s_list.get("shoppingListID")
                 or s_list.get("shoppingListId")
                 or s_list.get("listId")
@@ -205,13 +209,13 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         if self._list_id == "default_fallback" and shopping_lists:
             return shopping_lists[0]
 
-        return {"id": self._list_id, "name": "Inköpslista", "products": []}
+        return {"ID": self._list_id, "Name": "Inköpslista", "Products": []}
 
     @property
     def name(self) -> str:
         """Return the list name."""
         list_data = self._get_list_data()
-        list_name = list_data.get("name") if list_data else "Inköpslista"
+        list_name = list_data.get("Name") or list_data.get("name") if list_data else "Inköpslista"
         return f"Coop {list_name}"
 
     @property
@@ -221,22 +225,22 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         if not list_data:
             return []
 
-        products = list_data.get("products") or list_data.get("items") or []
+        products = list_data.get("Products") or list_data.get("products") or list_data.get("items") or []
         items: list[TodoItem] = []
 
         for p in products:
             if not isinstance(p, dict):
                 continue
-            p_id = str(p.get("id") or p.get("productId") or "")
-            name = p.get("name") or p.get("text") or "Vara"
-            is_checked = bool(p.get("isChecked") or p.get("checked", False))
+            p_id = str(p.get("ID") or p.get("id") or p.get("productId") or "")
+            name = p.get("Name") or p.get("name") or p.get("text") or "Vara"
+            is_checked = bool(p.get("Checked") or p.get("isChecked") or p.get("checked", False))
 
             desc_parts: list[str] = []
-            qty = p.get("quantity")
-            unit = p.get("unit")
+            qty = p.get("Quantity") or p.get("quantity")
+            unit = p.get("Unit") or p.get("unit")
             if qty:
                 desc_parts.append(f"{qty} {unit or ''}".strip())
-            placement = p.get("placement")
+            placement = p.get("Placement") or p.get("placement")
             if placement:
                 desc_parts.append(f"Avdelning: {placement}")
 
@@ -304,8 +308,8 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         list_data = self._get_list_data()
         existing_product = {}
         if list_data:
-            for p in list_data.get("products", []):
-                if str(p.get("id") or p.get("productId") or "") == str(item.uid):
+            for p in (list_data.get("Products") or list_data.get("products") or []):
+                if str(p.get("ID") or p.get("id") or p.get("productId") or "") == str(item.uid):
                     existing_product = p
                     break
 
@@ -315,23 +319,27 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
             else None
         )
         product_name = (
-            item.summary if item.summary else existing_product.get("name", "Vara")
+            item.summary if item.summary else existing_product.get("Name") or existing_product.get("name", "Vara")
         )
 
         await self.coordinator.api_client.update_item_in_shopping_list(
             shopping_list_id=target_list_id,
             product_id=item.uid,
             name=product_name,
-            unit=existing_product.get("unit"),
-            quantity=existing_product.get("quantity"),
-            placement=existing_product.get("placement"),
-            external_ingredient_id=existing_product.get("externalIngredientID"),
+            unit=existing_product.get("Unit") or existing_product.get("unit"),
+            quantity=existing_product.get("Quantity") or existing_product.get("quantity"),
+            placement=existing_product.get("Placement") or existing_product.get("placement"),
+            external_ingredient_id=existing_product.get("ExternalIngredientID") or existing_product.get("externalIngredientID"),
             is_checked=is_checked,
         )
         await self.coordinator.async_request_refresh()
 
+    async def async_delete_todo_item(self, uid: str) -> None:
+        """Remove a single item from list."""
+        await self.async_delete_todo_items([uid])
+
     async def async_delete_todo_items(self, uids: list[str]) -> None:
-        """Remove items from list."""
+        """Remove multiple items from list."""
         if not uids:
             return
 
@@ -352,11 +360,11 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         if not list_data:
             return {}
 
-        products = list_data.get("products") or []
+        products = list_data.get("Products") or list_data.get("products") or []
         checked_count = sum(
             1
             for p in products
-            if isinstance(p, dict) and (p.get("isChecked") or p.get("checked"))
+            if isinstance(p, dict) and (p.get("Checked") or p.get("isChecked") or p.get("checked"))
         )
         unchecked_count = len(products) - checked_count
 

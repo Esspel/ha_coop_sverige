@@ -307,7 +307,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 )
             elif isinstance(api_response, (str, int)):
                 new_list_id = str(api_response)
-        except Exception as err:  # noqa: BLE001
+        except Exception as err:  # noqa: BLE001  # noqa: BLE001
             _LOGGER.warning("Failed to create shopping list on Coop: %s", err)
 
         # 2. Om ID inte returnerades direkt i POST-svaret, gör en sökning bland listorna
@@ -350,7 +350,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                             or last_item.get("shoppingListId")
                             or last_item.get("listId")
                         )
-            except Exception as err:  # noqa: BLE001
+            except Exception as err:  # noqa: BLE001  # noqa: BLE001
                 _LOGGER.warning("Could not fetch fresh lists after creation: %s", err)
 
         await coordinator.async_request_refresh()
@@ -404,7 +404,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 "receipts": res.get("data", []),
                 "total": res.get("total", 0),
             }
-        except Exception as err:  # noqa: BLE001
+        except Exception as err:  # noqa: BLE001  # noqa: BLE001
             _LOGGER.error("Failed to fetch receipts: %s", err)
             return {"success": False, "error": str(err)}
 
@@ -428,7 +428,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
             url_path = f"/local/coop_receipts/kvitto_{receipt_id}.pdf"
             return {"success": True, "file_path": file_path, "url": url_path}
-        except Exception as err:  # noqa: BLE001
+        except Exception as err:  # noqa: BLE001  # noqa: BLE001
             _LOGGER.error("Failed to download receipt PDF: %s", err)
             return {"success": False, "error": str(err)}
 
@@ -443,7 +443,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 query=query, categories=categories
             )
             return {"success": True, "results": result}
-        except Exception as err:  # noqa: BLE001
+        except Exception as err:  # noqa: BLE001  # noqa: BLE001
             _LOGGER.error("Failed to search recipes: %s", err)
             return {"success": False, "error": str(err)}
 
@@ -458,7 +458,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 year=year, month=month
             )
             return {"success": True, "history": history}
-        except Exception as err:  # noqa: BLE001
+        except Exception as err:  # noqa: BLE001  # noqa: BLE001
             _LOGGER.error("Failed to fetch purchase history: %s", err)
             return {"success": False, "error": str(err)}
 

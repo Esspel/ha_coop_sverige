@@ -104,7 +104,7 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     primary_store_info = await self.api_client.get_store_info(
                         manual_ledger_str
                     )
-                except Exception as err:  # noqa: BLE001
+                except Exception as err:  # noqa: BLE001  # noqa: BLE001
                     _LOGGER.warning(
                         "Failed to fetch store info for manual ledger %s: %s",
                         manual_ledger_str,
@@ -119,7 +119,7 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     primary_store_offers = await self.api_client.get_sorting_groups(
                         manual_ledger_str
                     )
-                except Exception as err:  # noqa: BLE001
+                except Exception as err:  # noqa: BLE001  # noqa: BLE001
                     _LOGGER.warning(
                         "Failed to fetch sorting groups for manual ledger %s: %s",
                         manual_ledger_str,
@@ -160,7 +160,7 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             favorite_stores = (
                                 nearby.get("stores") or nearby.get("items") or []
                             )
-                    except Exception as err:  # noqa: BLE001
+                    except Exception as err:  # noqa: BLE001  # noqa: BLE001
                         _LOGGER.debug("Could not fetch nearby stores: %s", err)
 
                 if favorite_stores:
@@ -176,7 +176,7 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             primary_store_info = await self.api_client.get_store_info(
                                 ledger
                             )
-                        except Exception as err:  # noqa: BLE001
+                        except Exception as err:  # noqa: BLE001  # noqa: BLE001
                             _LOGGER.warning(
                                 "Failed to fetch store info for %s: %s", ledger, err
                             )
@@ -185,7 +185,7 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             primary_store_offers = (
                                 await self.api_client.get_sorting_groups(ledger)
                             )
-                        except Exception as err:  # noqa: BLE001
+                        except Exception as err:  # noqa: BLE001  # noqa: BLE001
                             _LOGGER.warning(
                                 "Failed to fetch sorting groups for store %s: %s",
                                 ledger,

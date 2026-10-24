@@ -10,6 +10,7 @@ from .const import (
     DEFAULT_SUB_KEY,
     OFFERS_BASE,
     PERSONAL_OFFERS_BASE,
+    RECEIPT_SUB_KEY,
     SHOPPING_LIST_BASE,
     STORE_BASE,
     TOKEN_URL,
@@ -34,11 +35,14 @@ class CoopAPIClient:
         session: aiohttp.ClientSession,
         session_cookie: str,
         sub_key: str | None = None,
+        betala_refresh_token: str | None = None,
     ) -> None:
         """Initialize the API client."""
         self.session = session
         self._session_cookie = session_cookie
-        # Tvinga alltid fallback till DEFAULT_SUB_KEY om sub_key är None, tom eller bara blanksteg
+        self._betala_refresh_token = betala_refresh_token
+        self._betala_access_token: str | None = None
+        self._betala_token_expires: datetime = datetime.min
         self._sub_key = (
             sub_key.strip()
             if (sub_key and isinstance(sub_key, str) and sub_key.strip())
@@ -47,16 +51,54 @@ class CoopAPIClient:
         self._access_token: str | None = None
         self._token_expires: datetime = datetime.min
 
-    def _get_headers(self, requires_auth: bool = True) -> dict[str, str]:
-        """Build request headers with mandatory subscription key."""
+    async def _async_refresh_betala_token(self) -> str | None:
+        """Refresh Betala access token using the offline refresh token."""
+        if not self._betala_refresh_token:
+            return None
+
+        if self._betala_access_token and datetime.now(
+            tz=UTC
+        ) < self._betala_token_expires - timedelta(minutes=5):
+            return self._betala_access_token
+
+        token_url = "https://sso.betala.coop.se/auth/realms/coop/protocol/openid-connect/token?origin=scanpay"
         headers = {
-            "Ocp-Apim-Subscription-Key": self._sub_key,
-            "Accept": "application/json",
-            "User-Agent": "Coop/2.35.0 (SE.coop.coopsverige; build:23500; iOS 17.5.1) Alamofire/5.8.1",
+            "User-Agent": "Coop/7.34 (5882; ; 27.0; ; Apple; iPhone18,3)",
+            "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
+            "Accept": "*/*",
         }
-        if requires_auth and self._access_token:
-            headers["Authorization"] = f"Bearer {self._access_token}"
-        return headers
+        payload = {
+            "client_id": "scanpay",
+            "grant_type": "refresh_token",
+            "refresh_token": self._betala_refresh_token,
+        }
+
+        try:
+            async with self.session.post(
+                token_url, headers=headers, data=payload, timeout=aiohttp.ClientTimeout(total=15)
+            ) as resp:
+                if resp.status != 200:
+                    _LOGGER.warning("Failed to refresh Betala token (status %s)", resp.status)
+                    return None
+
+                data = await resp.json()
+                self._betala_access_token = data.get("access_token")
+                expires_in = data.get("expires_in", 3600)
+                self._betala_token_expires = datetime.now(tz=UTC) + timedelta(seconds=expires_in)
+                
+                if new_rt := data.get("refresh_token"):
+                    self._betala_refresh_token = new_rt
+
+                return self._betala_access_token
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Error refreshing Betala token: %s", err)
+            return None
+
+    def _get_sub_key_for_url(self, url: str) -> str:
+        """Return the correct subscription key based on target API domain."""
+        if "proxy.api.coop.se" in url or "api.betala.coop.se" in url:
+            return RECEIPT_SUB_KEY
+        return self._sub_key
 
     async def _async_refresh_token(self) -> None:
         """Get a new access token using the session cookie."""
@@ -121,11 +163,12 @@ class CoopAPIClient:
         """Make an authorized request to the Coop API."""
         await self._async_refresh_token()
 
+        sub_key = self._get_sub_key_for_url(url)
         headers = kwargs.get("headers", {})
         headers.update(
             {
                 "Authorization": f"Bearer {self._access_token}",
-                "Ocp-Apim-Subscription-Key": self._sub_key,
+                "Ocp-Apim-Subscription-Key": sub_key,
                 "Accept": "application/json",
             }
         )
@@ -136,7 +179,6 @@ class CoopAPIClient:
                 method, url, timeout=aiohttp.ClientTimeout(total=15), **kwargs
             ) as resp:
                 if resp.status == 401:
-                    # Token might have expired between check and use
                     await self._async_refresh_token()
                     headers["Authorization"] = f"Bearer {self._access_token}"
                     async with self.session.request(
@@ -201,12 +243,7 @@ class CoopAPIClient:
         )
 
     async def execute_shopping_list_actions(self, actions: list[dict[str, Any]]) -> Any:
-        """Execute action batch on shopping lists.
-
-        actionType 0: Add product
-        actionType 1: Update product
-        actionType 2: Delete product
-        """
+        """Execute action batch on shopping lists."""
         return await self._api_request(
             "POST",
             f"{SHOPPING_LIST_BASE}/execute?api-version=v2",
@@ -265,9 +302,7 @@ class CoopAPIClient:
         if placement is not None:
             product["placement"] = placement
         if is_checked is not None:
-            product["checked"] = bool(
-                is_checked
-            )  # API:et använder "checked" i POST-requesten
+            product["checked"] = bool(is_checked)
         if external_ingredient_id is not None:
             product["externalIngredientID"] = external_ingredient_id
 
@@ -342,24 +377,45 @@ class CoopAPIClient:
         page: int = 1,
         per_page: int = 15,
     ) -> dict[str, Any]:
-        """Fetch list of purchase receipts."""
+        """Fetch list of purchase receipts using automated refresh token."""
+        betala_token = await self._async_refresh_betala_token()
+        if not betala_token:
+            _LOGGER.debug("No valid betala_refresh_token available, skipping receipts")
+            return {"data": [], "total": 0}
+
         if not from_date:
-            from_date = (datetime.now(UTC) - timedelta(days=365)).strftime(
-                "%Y-%m-%d"
-            )
+            from_date = (datetime.now(UTC) - timedelta(days=365)).strftime("%Y-%m-%d")
         if not to_date:
             to_date = datetime.now(UTC).strftime("%Y-%m-%d")
 
         url = f"https://api.betala.coop.se/kvitto/rest/receipts/v1?from_date={from_date}&to_date={to_date}&page={page}&per_page={per_page}"
-        return await self._api_request("GET", url)
+        headers = {
+            "Authorization": f"Bearer {betala_token}",
+            "Ocp-Apim-Subscription-Key": RECEIPT_SUB_KEY,
+            "Accept": "application/json",
+        }
+
+        try:
+            async with self.session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status != 200:
+                    text = await resp.text()
+                    _LOGGER.warning("Receipt API error %s: %s", resp.status, text)
+                    return {"data": [], "total": 0}
+                return await resp.json()
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Could not fetch receipts: %s", err)
+            return {"data": [], "total": 0}
 
     async def get_formal_receipt_pdf(self, receipt_id: str) -> bytes:
         """Fetch the formal receipt PDF for a specific receipt ID."""
+        betala_token = await self._async_refresh_betala_token()
+        if not betala_token:
+            raise CoopAPIError("No valid betala_refresh_token configured for receipt PDF download")
+
         url = f"https://api.betala.coop.se/kvitto/rest/receipts/v1/{receipt_id}/formalReceipt"
-        await self._async_refresh_token()
         headers = {
-            "Authorization": f"Bearer {self._access_token}",
-            "Ocp-Apim-Subscription-Key": self._sub_key,
+            "Authorization": f"Bearer {betala_token}",
+            "Ocp-Apim-Subscription-Key": RECEIPT_SUB_KEY,
             "Accept": "*/*",
         }
         async with self.session.get(
@@ -393,18 +449,7 @@ class CoopAPIClient:
         if categories:
             payload["filters"] = [{"attributeName": "categories", "values": categories}]
 
-        await self._async_refresh_token()
-        headers = {
-            "Authorization": f"Bearer {self._access_token}",
-            "Ocp-Apim-Subscription-Key": self._sub_key,
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
-        async with self.session.post(url, json=payload, headers=headers) as resp:
-            if resp.status != 200:
-                text = await resp.text()
-                raise CoopAPIError(f"Recipe search failed {resp.status}: {text}")
-            return await resp.json()
+        return await self._api_request("POST", url, json=payload)
 
     # --- Purchase History / Köphistorik API ---
 

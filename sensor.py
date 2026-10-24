@@ -237,6 +237,7 @@ async def async_setup_entry(
         CoopFavoriteStoreSensor(coordinator, entry.entry_id),
         CoopStoreDealsSensor(coordinator, entry.entry_id),
         CoopShoppingListsSummarySensor(coordinator, entry.entry_id),
+        CoopReceiptsSensor(coordinator, entry.entry_id),
     ]
 
     async_add_entities(sensors)

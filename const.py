@@ -3,7 +3,7 @@
 DOMAIN = "ha_coop_sverige"
 
 CONF_SESSION_COOKIE = "session_cookie"
-CONF_BETALA_TOKEN = "betala_token"
+CONF_BETALA_REFRESH_TOKEN = "betala_refresh_token"
 CONF_REFRESH_TOKEN = "refresh_token"
 CONF_EMAIL = "email"
 CONF_NAME = "name"
