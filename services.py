@@ -143,15 +143,26 @@ def _get_coordinator(hass: HomeAssistant, entry_id: str | None) -> CoopCoordinat
     return next(iter(entries.values()))
 
 
-def _resolve_list_id(
+async def _resolve_list_id(
     coordinator: CoopCoordinator, list_id: str | None, product_id: str | None = None
 ) -> str:
     """Resolve shopping list ID, defaulting to first available or one containing the product."""
-    shopping_lists = coordinator.data.get("shopping_lists") or []
-    if isinstance(shopping_lists, dict):
+    try:
+        raw = await coordinator.api_client.get_shopping_lists()
+    except Exception:
+        raw = coordinator.data.get("shopping_lists") if coordinator.data else None
+    if isinstance(raw, dict):
         shopping_lists = (
-            shopping_lists.get("shoppingLists") or shopping_lists.get("lists") or []
+            raw.get("shoppingLists") or raw.get("lists") or raw.get("items") or []
         )
+    elif isinstance(raw, list):
+        shopping_lists = raw
+    else:
+        shopping_lists = coordinator.data.get("shopping_lists") if coordinator.data else []
+        if isinstance(shopping_lists, dict):
+            shopping_lists = (
+                shopping_lists.get("shoppingLists") or shopping_lists.get("lists") or []
+            )
 
     if list_id:
         return str(list_id)
@@ -199,7 +210,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     async def handle_add_item(call: ServiceCall) -> ServiceResponse:
         """Add item to a shopping list and return status."""
         coordinator = _get_coordinator(hass, call.data.get(ATTR_ENTRY_ID))
-        list_id = _resolve_list_id(coordinator, call.data.get(ATTR_LIST_ID))
+        list_id = await _resolve_list_id(coordinator, call.data.get(ATTR_LIST_ID))
         name = call.data[ATTR_NAME]
         quantity = call.data.get(ATTR_QUANTITY, "1")
         unit = normalize_unit(call.data.get(ATTR_UNIT))
@@ -219,7 +230,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         """Update an item in a shopping list and return status."""
         coordinator = _get_coordinator(hass, call.data.get(ATTR_ENTRY_ID))
         product_id = call.data[ATTR_PRODUCT_ID]
-        list_id = _resolve_list_id(
+        list_id = await _resolve_list_id(
             coordinator, call.data.get(ATTR_LIST_ID), product_id=product_id
         )
 
@@ -246,7 +257,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         """Delete an item from a shopping list and return status."""
         coordinator = _get_coordinator(hass, call.data.get(ATTR_ENTRY_ID))
         product_id = call.data[ATTR_PRODUCT_ID]
-        list_id = _resolve_list_id(
+        list_id = await _resolve_list_id(
             coordinator, call.data.get(ATTR_LIST_ID), product_id=product_id
         )
 
@@ -260,7 +271,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     async def handle_clear_completed(call: ServiceCall) -> ServiceResponse:
         """Clear all checked items from a shopping list and return count."""
         coordinator = _get_coordinator(hass, call.data.get(ATTR_ENTRY_ID))
-        list_id = _resolve_list_id(coordinator, call.data.get(ATTR_LIST_ID))
+        list_id = await _resolve_list_id(coordinator, call.data.get(ATTR_LIST_ID))
 
         shopping_lists = coordinator.data.get("shopping_lists") or []
         if isinstance(shopping_lists, dict):

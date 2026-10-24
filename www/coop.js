@@ -186,13 +186,15 @@ class CoopShoppingListCard extends HTMLElement {
     const listEntity = this._hass.states[this.currentListEntityId];
     const listId = listEntity.attributes.id || listEntity.attributes.shopping_list_id || listEntity.attributes.friendly_name;
 
-    await this._hass.callService('ha_coop_sverige', 'add_item', {
-      list_id: String(listId),
+    const payload = {
       name: name,
       quantity: qtyInput.value || 1,
       unit: unitSelect.value || '',
       placement: placementSelect.value || '',
-    });
+    };
+    if (listId) payload.list_id = String(listId);
+
+    await this._hass.callService('ha_coop_sverige', 'add_item', payload);
 
     nameInput.value = '';
   }
@@ -204,7 +206,7 @@ class CoopShoppingListCard extends HTMLElement {
 
     await this._hass.callService('ha_coop_sverige', 'update_item', {
       list_id: String(listId),
-      item_id: item.id || item.summary,
+      product_id: item.id || item.summary,
       is_checked: !isCompleted,
     });
   }

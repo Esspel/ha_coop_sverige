@@ -291,7 +291,6 @@ get_shopping_lists:
       selector:
         text:
 
-```yaml
 get_receipts:
   name: Hämta kvitton
   description: Hämtar kvitton från Coop.
@@ -391,4 +390,3 @@ get_purchase_history:
       required: false
       selector:
         text:
-```
