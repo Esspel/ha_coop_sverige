@@ -183,8 +183,8 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry_id)},
             name=name,
-            manufacturer="Coop Sverige",
-            model="Coop Medlem & Butik",
+            manufacturer="Coop Sverige Unofficial",
+            model="Unofficial",
         )
 
     async def _ensure_real_list_id(self) -> str:
