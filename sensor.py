@@ -137,16 +137,31 @@ def parse_store_deals(raw_data: Any) -> list[dict[str, Any]]:
             if not isinstance(c, dict):
                 continue
             cluster_items = c.get("clusterInteriorOffers") or c.get("clusterItems") or []
-            if cluster_items:
-                for item in cluster_items:
-                    deal = _build_deal_from_obj(item, parent=c)
-                    if deal:
-                        deals.append(deal)
-                # Also include parent if it has its own distinct offer data not represented? usually parent is container
-                continue
             deal = _build_deal_from_obj(c)
-            if deal:
-                deals.append(deal)
+            if not deal:
+                continue
+            articles = []
+            for item in cluster_items:
+                if isinstance(item, dict):
+                    item_content = item.get("content") or {}
+                    vol_parts = []
+                    if item_content.get("weightVolume") or item.get("netVolume"):
+                        vol_parts.append(str(item_content.get("weightVolume") or item.get("netVolume")))
+                    if item_content.get("netContentUnit") or item.get("netContentUnit"):
+                        vol_parts.append(str(item_content.get("netContentUnit") or item.get("netContentUnit")))
+                    articles.append(
+                        {
+                            "ean": item.get("externalId") or item_content.get("externalId"),
+                            "volume": " ".join(vol_parts).strip(),
+                            "campaign_id": item.get("campaignId") or item.get("id"),
+                            "image_url": item_content.get("imageUrl") or item.get("image"),
+                            "title": item_content.get("title") or item.get("title"),
+                            "amount_information": item_content.get("amountInformation"),
+                            "brand": item_content.get("brand"),
+                        }
+                    )
+            deal["articles"] = articles
+            deals.append(deal)
 
     return deals
 
