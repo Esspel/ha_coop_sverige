@@ -57,8 +57,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     dev_reg.async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, entry.entry_id)},
-        name=entry.title or "Coop Sverige",
-        manufacturer="Coop Sverige",
+        name=entry.title or "Coop integration",
+        manufacturer="Coop Sverige Unofficial",
         model="Unofficial",
         entry_type=dr.DeviceEntryType.SERVICE,
         configuration_url="https://github.com/Esspel/ha_coop_sverige",
@@ -79,8 +79,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         dev_reg.async_get_or_create(
             config_entry_id=entry.entry_id,
             identifiers={(DOMAIN, f"store_{store_ledger}")},
-            name=f"Coop {store_name}",
-            manufacturer="Coop Sverige",
+            name=f"Favoritbutik {store_name}",
+            manufacturer="Coop Sverige Unofficial",
             model="Unofficial",
             entry_type=dr.DeviceEntryType.SERVICE,
             via_device=(DOMAIN, entry.entry_id),

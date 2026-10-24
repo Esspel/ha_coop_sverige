@@ -3,6 +3,7 @@
 DOMAIN = "ha_coop_sverige"
 
 CONF_SESSION_COOKIE = "session_cookie"
+CONF_BETALA_TOKEN = "betala_token"
 CONF_REFRESH_TOKEN = "refresh_token"
 CONF_EMAIL = "email"
 CONF_NAME = "name"
@@ -17,6 +18,7 @@ CLIENT_ID = "coopse_prod"
 
 # Default subscription key discovered from network traffic
 DEFAULT_SUB_KEY = "3becf0ce306f41a1ae94077c16798187"
+RECEIPT_SUB_KEY = "1859ada0cc7f4a60b6b9a60a60adc75d"
 
 # Supported Home Assistant platforms
 PLATFORMS = ["sensor", "todo"]

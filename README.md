@@ -88,6 +88,7 @@ Spåra ditt medlemskap och dina intjänade poäng i realtid:
 4. Ladda om sidan eller klicka runt för att trigga ett anrop (t.ex. mot `coop.se/api/spa/token`).
 5. Klicka på ett anrop och titta under fliken **Cookies** eller rubriken **Request Headers** -> `Cookie`.
 6. Kopiera värdet för kakan **`.AspNetCore.Cookies`** (en lång textsträng).
+(Valfritt) Om du vill aktivera kvittohämtning och PDF-nedladdningar via 'api.betala.coop.se', kopiera även Bearer-tokenet från nätverksanrop mot Betala-API:et. (Görs lättast via mitmweb --mode wireguard anslut en enhet som har coop-appen och gå in under scan & pay och Tidigare Köp)
 
 ### Steg 2: Lägg till i Home Assistant
 1. Gå till **Inställningar → Enheter och tjänster → Lägg till integration**.

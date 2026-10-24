@@ -9,6 +9,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import selector
 
 from .const import (
+    CONF_BETALA_TOKEN,
     CONF_EMAIL,
     CONF_NAME,
     CONF_SCAN_INTERVAL,
@@ -26,7 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 
 def _get_user_schema(
     default_cookie: str = "",
-    default_sub_key: str = DEFAULT_SUB_KEY,
+    default_betala_token: str = "",
     default_store: str = "",
     default_interval: int = DEFAULT_SCAN_INTERVAL,
 ) -> vol.Schema:
@@ -36,8 +37,8 @@ def _get_user_schema(
             vol.Required(CONF_SESSION_COOKIE, default=default_cookie): selector(
                 {"text": {"type": "password"}}
             ),
-            vol.Optional(CONF_SUB_KEY, default=default_sub_key): selector(
-                {"text": {"type": "text"}}
+            vol.Optional(CONF_BETALA_TOKEN, default=default_betala_token): selector(
+                {"text": {"type": "password"}}
             ),
             vol.Optional(CONF_STORE_LEDGER_ACCOUNT, default=default_store): selector(
                 {"text": {"type": "text"}}
@@ -58,13 +59,17 @@ def _get_user_schema(
 
 def _get_options_schema(
     default_cookie: str = "",
+    default_betala_token: str = "",
     default_store: str = "",
     default_interval: int = DEFAULT_SCAN_INTERVAL,
 ) -> vol.Schema:
-    """Schema for options flow ( hides subscription key from user )."""
+    """Schema for options flow."""
     return vol.Schema(
         {
             vol.Required(CONF_SESSION_COOKIE, default=default_cookie): selector(
+                {"text": {"type": "password"}}
+            ),
+            vol.Optional(CONF_BETALA_TOKEN, default=default_betala_token): selector(
                 {"text": {"type": "password"}}
             ),
             vol.Optional(CONF_STORE_LEDGER_ACCOUNT, default=default_store): selector(
@@ -109,7 +114,7 @@ class CoopConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             session_cookie = user_input[CONF_SESSION_COOKIE].strip()
-            sub_key = user_input.get(CONF_SUB_KEY, "").strip() or DEFAULT_SUB_KEY
+            betala_token = user_input.get(CONF_BETALA_TOKEN, "").strip()
             store_ledger = user_input.get(CONF_STORE_LEDGER_ACCOUNT, "").strip()
             scan_interval = user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
@@ -131,10 +136,9 @@ class CoopConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     title=name,
                     data={
                         CONF_SESSION_COOKIE: session_cookie,
-                        CONF_SUB_KEY: sub_key,
-                        CONF_STORE_LEDGER_ACCOUNT: store_ledger
-                        if store_ledger
-                        else None,
+                        CONF_BETALA_TOKEN: betala_token,
+                        CONF_SUB_KEY: DEFAULT_SUB_KEY,
+                        CONF_STORE_LEDGER_ACCOUNT: store_ledger if store_ledger else None,
                         CONF_SCAN_INTERVAL: scan_interval,
                         CONF_EMAIL: email,
                         CONF_NAME: name,
@@ -166,7 +170,6 @@ class CoopOptionsFlowHandler(config_entries.OptionsFlow):
 
             try:
                 await _validate_cookie(self.hass, session_cookie)
-                # Behåll den befintliga sub_key i options-datan så den inte försvinner
                 sub_key = (
                     self.config_entry.options.get(CONF_SUB_KEY)
                     or self.config_entry.data.get(CONF_SUB_KEY)
@@ -185,6 +188,9 @@ class CoopOptionsFlowHandler(config_entries.OptionsFlow):
         cookie = self.config_entry.options.get(
             CONF_SESSION_COOKIE
         ) or self.config_entry.data.get(CONF_SESSION_COOKIE, "")
+        betala_token = self.config_entry.options.get(
+            CONF_BETALA_TOKEN
+        ) or self.config_entry.data.get(CONF_BETALA_TOKEN, "")
         store_ledger = self.config_entry.options.get(
             CONF_STORE_LEDGER_ACCOUNT
         ) or self.config_entry.data.get(CONF_STORE_LEDGER_ACCOUNT, "")
@@ -196,6 +202,7 @@ class CoopOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="init",
             data_schema=_get_options_schema(
                 default_cookie=cookie,
+                default_betala_token=betala_token,
                 default_store=store_ledger,
                 default_interval=int(scan_interval),
             ),
