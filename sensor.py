@@ -404,6 +404,29 @@ class CoopStoreDealsSensor(CoopBaseSensor):
         deals = parse_store_deals(self.coordinator.data.get("primary_store_offers"))
         return len(deals)
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose offers in multiple formats for card compatibility."""
+        attrs: dict[str, Any] = {}
+        if self.coordinator.data:
+            attrs["deals"] = parse_store_deals(self.coordinator.data.get("primary_store_offers"))
+            personal_offers = self.coordinator.data.get("personal_offers", [])
+            active_offers = self.coordinator.data.get("active_personal_offers", [])
+            attrs["personal_offers"] = personal_offers
+            attrs["active_offers"] = active_offers
+            # Wrap for templates expecting offer structure
+            wrapped = []
+            for po in active_offers:
+                if isinstance(po, dict):
+                    if "offer" in po and isinstance(po.get("offer"), dict):
+                        wrapped.append(po)
+                    else:
+                        wrapped.append({"offer": po})
+                else:
+                    wrapped.append(po)
+            attrs["offers"] = wrapped or active_offers
+        return attrs
+
 
 class CoopShoppingListsSummarySensor(CoopBaseSensor):
     """Sensor providing a summary of all shopping lists."""

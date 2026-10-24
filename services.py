@@ -165,21 +165,63 @@ async def _resolve_list_id(
             )
 
     if list_id:
-        return str(list_id)
+        # If it's an actual ID that exists in lists, use it
+        lid_str = str(list_id).strip()
+        for s_list in shopping_lists:
+            if not isinstance(s_list, dict):
+                continue
+            candidate = str(
+                s_list.get("id")
+                or s_list.get("shoppingListID")
+                or s_list.get("shoppingListId")
+                or s_list.get("listId")
+                or s_list.get("ID")
+                or ""
+            )
+            if candidate and candidate == lid_str:
+                return candidate
+            # If name matches friendly name like "Coop ..." or just name
+            name_cand = str(s_list.get("name") or s_list.get("Name") or "")
+            if name_cand and (
+                lid_str == name_cand
+                or lid_str.endswith(name_cand)
+                or name_cand in lid_str
+            ):
+                if candidate:
+                    return candidate
+        # If it looks numeric or looks like an ID (not a friendly name with spaces that doesn't match), try to use as-is
+        if lid_str and not lid_str.startswith("Coop ") and " " not in lid_str:
+            return lid_str
+        # Otherwise fall through to default
 
     # If product_id given, search which list contains it
     if product_id:
         for s_list in shopping_lists:
-            lid = str(s_list.get("id") or s_list.get("shoppingListID") or "")
-            Products = s_list.get("Products") or []
+            lid = str(
+                s_list.get("id")
+                or s_list.get("shoppingListID")
+                or s_list.get("shoppingListId")
+                or s_list.get("listId")
+                or s_list.get("ID")
+                or ""
+            )
+            Products = s_list.get("Products") or s_list.get("products") or s_list.get("items") or []
             for p in Products:
-                if str(p.get("id") or p.get("productId") or "") == str(product_id):
+                pid = str(p.get("id") or p.get("productId") or p.get("ID") or "")
+                if pid == str(product_id):
                     return lid
 
     # Default to first available list
     if shopping_lists:
         first = shopping_lists[0]
-        return str(first.get("id") or first.get("shoppingListID") or "")
+        return str(
+            first.get("id")
+            or first.get("shoppingListID")
+            or first.get("shoppingListId")
+            or first.get("listId")
+            or first.get("ID")
+            or ""
+        )
 
     raise ValueError("No shopping lists found in account")
 
@@ -582,7 +624,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         **resp_kwargs,
     )
     hass.services.async_register(
-        DOMAIN, "get_receipts", handle_get_receipts, schema=vol.Schema({...})
+        DOMAIN,
+        "get_receipts",
+        handle_get_receipts,
+        schema=vol.Schema(
+            {
+                vol.Optional("from_date"): cv.string,
+                vol.Optional("to_date"): cv.string,
+                vol.Optional("per_page"): cv.positive_int,
+                vol.Optional(ATTR_ENTRY_ID): cv.string,
+            }
+        ),
+        **resp_kwargs,
     )
     hass.services.async_register(
         DOMAIN,

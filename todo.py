@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import timedelta
 from typing import Any
 
 from homeassistant.components.todo import (
@@ -16,6 +17,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, VALID_UNITS
@@ -80,6 +82,7 @@ async def async_setup_entry(
     """Set up Coop shopping lists as Todo entities."""
     coordinator: CoopCoordinator = entry.runtime_data
     existing_list_ids: set[str] = set()
+    entities_by_id: dict[str, CoopTodoListEntity] = {}
 
     def _get_raw_lists() -> list[dict[str, Any]]:
         if not coordinator.data:
@@ -98,10 +101,11 @@ async def async_setup_entry(
 
     if not raw_lists:
         fallback_id = "default_fallback"
-        existing_list_ids.add(fallback_id)
-        initial_entities.append(
-            CoopTodoListEntity(coordinator, entry.entry_id, fallback_id)
-        )
+        if fallback_id not in existing_list_ids:
+            existing_list_ids.add(fallback_id)
+            entity = CoopTodoListEntity(coordinator, entry.entry_id, fallback_id)
+            entities_by_id[fallback_id] = entity
+            initial_entities.append(entity)
     else:
         for s_list in raw_lists:
             if not isinstance(s_list, dict):
@@ -116,38 +120,63 @@ async def async_setup_entry(
             ).strip()
             if lid and lid not in existing_list_ids:
                 existing_list_ids.add(lid)
-                initial_entities.append(
-                    CoopTodoListEntity(coordinator, entry.entry_id, lid)
-                )
+                entity = CoopTodoListEntity(coordinator, entry.entry_id, lid)
+                entities_by_id[lid] = entity
+                initial_entities.append(entity)
 
     async_add_entities(initial_entities)
 
     @callback
-    def _sync_new_entities() -> None:
+    def _sync_lists() -> None:
         current_lists = _get_raw_lists()
-        new_entities: list[CoopTodoListEntity] = []
+        current_ids = set()
 
-        for s_list in current_lists:
-            if not isinstance(s_list, dict):
-                continue
-            lid = str(
-                s_list.get("ID")
-                or s_list.get("id")
-                or s_list.get("shoppingListID")
-                or s_list.get("shoppingListId")
-                or s_list.get("listId")
-                or ""
-            ).strip()
-            if lid and lid not in existing_list_ids:
-                existing_list_ids.add(lid)
-                new_entities.append(
-                    CoopTodoListEntity(coordinator, entry.entry_id, lid)
-                )
+        if current_lists:
+            for s_list in current_lists:
+                if not isinstance(s_list, dict):
+                    continue
+                lid = str(
+                    s_list.get("ID")
+                    or s_list.get("id")
+                    or s_list.get("shoppingListID")
+                    or s_list.get("shoppingListId")
+                    or s_list.get("listId")
+                    or ""
+                ).strip()
+                if not lid:
+                    continue
+                current_ids.add(lid)
+                if lid not in existing_list_ids:
+                    existing_list_ids.add(lid)
+                    entity = CoopTodoListEntity(coordinator, entry.entry_id, lid)
+                    entities_by_id[lid] = entity
+                    async_add_entities([entity])
+        else:
+            # No lists from API - may use fallback; ensure we don't remove entities
+            pass
 
-        if new_entities:
-            async_add_entities(new_entities)
+        # Remove entities for lists that no longer exist
+        to_remove = []
+        for lid in list(existing_list_ids):
+            if lid == "default_fallback":
+                continue  # Keep fallback unless we have real lists
+            if lid not in current_ids and current_lists:
+                to_remove.append(lid)
+        for lid in to_remove:
+            entity = entities_by_id.get(lid)
+            if entity:
+                try:
+                    hass.async_create_task(entity.async_remove(force_remove=True))
+                except Exception:  # noqa: BLE001
+                    pass
+            existing_list_ids.discard(lid)
+            entities_by_id.pop(lid, None)
 
-    entry.async_on_unload(coordinator.async_add_listener(_sync_new_entities))
+    entry.async_on_unload(coordinator.async_add_listener(_sync_lists))
+    # Also check periodically as requested
+    entry.async_on_unload(
+        async_track_time_interval(hass, lambda _: _sync_lists(), timedelta(minutes=1))
+    )
 
 
 class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
@@ -260,11 +289,13 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         return {"ID": self._list_id, "Name": "Inköpslista", "Products": []}
 
     @property
-    def name(self) -> str:
-        """Return the list name."""
-        list_data = self._get_list_data()
-        list_name = list_data.get("Name") or list_data.get("name") if list_data else "Inköpslista"
-        return f"Coop {list_name}"
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra attributes including list ID."""
+        return {
+            "id": self._list_id,
+            "shopping_list_id": self._list_id,
+            "list_id": self._list_id,
+        }
 
     @property
     def todo_items(self) -> list[TodoItem] | None:

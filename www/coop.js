@@ -184,7 +184,7 @@ class CoopShoppingListCard extends HTMLElement {
     if (!name || !this.currentListEntityId) return;
 
     const listEntity = this._hass.states[this.currentListEntityId];
-    const listId = listEntity.attributes.id || listEntity.attributes.shopping_list_id || listEntity.attributes.friendly_name;
+    const listId = listEntity.attributes.id || listEntity.attributes.shopping_list_id || listEntity.attributes.list_id || this._listId || listEntity.attributes.friendly_name;
 
     const payload = {
       name: name,
@@ -201,7 +201,7 @@ class CoopShoppingListCard extends HTMLElement {
 
   async _toggleItem(item) {
     const listEntity = this._hass.states[this.currentListEntityId];
-    const listId = listEntity.attributes.id || listEntity.attributes.shopping_list_id || listEntity.attributes.friendly_name;
+    const listId = listEntity.attributes.id || listEntity.attributes.shopping_list_id || listEntity.attributes.list_id || this._listId || listEntity.attributes.friendly_name;
     const isCompleted = item.status === 'completed';
 
     await this._hass.callService('ha_coop_sverige', 'update_item', {
@@ -214,7 +214,7 @@ class CoopShoppingListCard extends HTMLElement {
   async _deleteItem(item) {
     if (!confirm(`Ta bort "${item.summary || item.name}"?`)) return;
     const listEntity = this._hass.states[this.currentListEntityId];
-    const listId = listEntity.attributes.id || listEntity.attributes.shopping_list_id || listEntity.attributes.friendly_name;
+    const listId = listEntity.attributes.id || listEntity.attributes.shopping_list_id || listEntity.attributes.list_id || this._listId || listEntity.attributes.friendly_name;
 
     await this._hass.callService('ha_coop_sverige', 'delete_item', {
       list_id: String(listId),
