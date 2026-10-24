@@ -397,18 +397,28 @@ class CoopAPIClient:
         page: int = 1,
         per_page: int = 15,
     ) -> dict[str, Any]:
-        """Fetch list of purchase receipts using automated refresh token."""
+        """Fetch receipts using the Betala refresh token."""
         betala_token = await self._async_refresh_betala_token()
+
         if not betala_token:
-            _LOGGER.debug("No valid betala_refresh_token available, skipping receipts")
+            _LOGGER.warning(
+                "Receipts unavailable: Betala token refresh failed or refresh token is missing"
+            )
             return {"data": [], "total": 0}
 
         if not from_date:
-            from_date = (datetime.now(UTC) - timedelta(days=365)).strftime("%Y-%m-%d")
+            from_date = (
+                datetime.now(UTC) - timedelta(days=365)
+            ).strftime("%Y-%m-%d")
         if not to_date:
             to_date = datetime.now(UTC).strftime("%Y-%m-%d")
 
-        url = f"https://api.betala.coop.se/kvitto/rest/receipts/v1?from_date={from_date}&to_date={to_date}&page={page}&per_page={per_page}"
+        url = (
+            "https://api.betala.coop.se/kvitto/rest/receipts/v1"
+            f"?from_date={from_date}&to_date={to_date}"
+            f"&page={page}&per_page={per_page}"
+        )
+
         headers = {
             "Authorization": f"Bearer {betala_token}",
             "Ocp-Apim-Subscription-Key": RECEIPT_SUB_KEY,
@@ -416,14 +426,38 @@ class CoopAPIClient:
         }
 
         try:
-            async with self.session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+            async with self.session.get(
+                url,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
                 if resp.status != 200:
                     text = await resp.text()
-                    _LOGGER.warning("Receipt API error %s: %s", resp.status, text)
+                    _LOGGER.warning(
+                        "Receipt API returned HTTP %s: %s",
+                        resp.status,
+                        text[:500],
+                    )
                     return {"data": [], "total": 0}
-                return await resp.json()
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Could not fetch receipts: %s", err)
+
+                result = await resp.json()
+
+                if not isinstance(result, dict):
+                    _LOGGER.warning(
+                        "Unexpected receipt API response type: %s",
+                        type(result).__name__,
+                    )
+                    return {"data": [], "total": 0}
+
+                _LOGGER.debug(
+                    "Receipt API response keys: %s; total=%s",
+                    list(result.keys()),
+                    result.get("total"),
+                )
+                return result
+
+        except Exception:
+            _LOGGER.exception("Failed to fetch receipts from Coop")
             return {"data": [], "total": 0}
 
     async def get_formal_receipt_pdf(self, receipt_id: str) -> bytes:

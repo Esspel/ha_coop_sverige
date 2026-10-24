@@ -453,8 +453,8 @@ class CoopReceiptsSensor(CoordinatorEntity[CoopCoordinator], SensorEntity):
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry_id)},
             name=name,
-            manufacturer="Coop Sverige",
-            model="Coop Medlem & Butik",
+            manufacturer="Coop Sverige Unofficial",
+            model="Unofficial",
         )
 
     @property
