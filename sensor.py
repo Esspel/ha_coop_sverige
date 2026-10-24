@@ -442,7 +442,21 @@ class CoopStoreDealsSensor(CoopBaseSensor):
         if not self.coordinator.data:
             return 0
         deals = parse_store_deals(self.coordinator.data.get("primary_store_offers"))
-        return len(deals)
+        # Count parent offers, not individual variants
+        parents = []
+        seen = set()
+        for deal in deals:
+            pid = deal.get("parent_id") or deal.get("id")
+            if pid and pid not in seen:
+                seen.add(pid)
+                parents.append(deal)
+            elif not pid:
+                # Fallback - count unique titles if no ids
+                key = f"{deal.get('title')}|{deal.get('price')}"
+                if key not in seen:
+                    seen.add(key)
+                    parents.append(deal)
+        return len(parents) if parents else len(deals)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
