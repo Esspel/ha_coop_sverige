@@ -76,6 +76,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     if store_ledger:
         store_name = store_info.get("name") or first_store.get("name") or "Coop Butik"
+        raw_url = store_info.get("url") or store_info.get("webUrl") or ""
+        conf_url = f"https://www.coop.se{raw_url}" if raw_url.startswith("/") else (raw_url or "https://www.coop.se")
+        
         dev_reg.async_get_or_create(
             config_entry_id=entry.entry_id,
             identifiers={(DOMAIN, f"store_{store_ledger}")},
@@ -84,9 +87,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             model="Unofficial",
             entry_type=dr.DeviceEntryType.SERVICE,
             via_device=(DOMAIN, entry.entry_id),
-            configuration_url=store_info.get("url")
-            or store_info.get("webUrl")
-            or "https://www.coop.se",
+            configuration_url=conf_url,
         )
 
     # Forward to platforms

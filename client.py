@@ -107,7 +107,7 @@ class CoopAPIClient:
         """Return the correct subscription key based on target API domain and path."""
         if "api.betala.coop.se" in url or "/digital/shoppinglist" in url:
             return RECEIPT_SUB_KEY
-        if "/external/store" in url or "dke/offers" in url:
+        if "/external/store" in url or "/sorting-groups/" in url or "dke/offers" in url:
             return STORE_SUB_KEY
         return self._sub_key
 
