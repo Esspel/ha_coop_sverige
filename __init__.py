@@ -1,5 +1,7 @@
 import logging
+from pathlib import Path
 
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
@@ -19,6 +21,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data.setdefault(DOMAIN, {})
     await async_setup_services(hass)
     return True
+
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -46,7 +49,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         api_client=client,
         entry=entry,
     )
-
+    
+    # Exponera mappen 'www' inne i custom_componenten via en egen URL-sökväg
+    www_dir = Path(__file__).parent / "www"
+    if www_dir.exists():
+        await hass.http.async_register_static_paths([
+            StaticPathConfig("/ha_coop_sverige_static", str(www_dir), cache_headers=False)
+        ])
+        
     # Fetch initial data
     await coordinator.async_config_entry_first_refresh()
 
