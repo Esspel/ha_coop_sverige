@@ -65,7 +65,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
    # Explicitly register member device in Home Assistant Device Registry
     dev_reg = dr.async_get(hass)
-    main_device = dev_reg.async_get_or_create(
+    dev_reg.async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, entry.entry_id)},
         name=entry.title or "Coop integration",

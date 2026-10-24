@@ -364,6 +364,37 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         await coordinator.api_client.delete_shopping_list(list_id)
         await coordinator.async_request_refresh()
         return {"success": True, "list_id": list_id}
+    
+    
+    async def handle_get_shopping_lists(
+        call: ServiceCall,
+    ) -> ServiceResponse:
+        """Fetch all shopping lists from Coop."""
+        coordinator = _get_coordinator(
+            hass, call.data.get(ATTR_ENTRY_ID)
+        )
+
+        shopping_lists = (
+            await coordinator.api_client.get_shopping_lists()
+        )
+
+        if isinstance(shopping_lists, dict):
+            shopping_lists = (
+                shopping_lists.get("shoppingLists")
+                or shopping_lists.get("lists")
+                or shopping_lists.get("items")
+                or []
+            )
+
+        if not isinstance(shopping_lists, list):
+            shopping_lists = []
+
+        return {
+            "success": True,
+            "count": len(shopping_lists),
+            "shopping_lists": shopping_lists,
+        }
+
 
     async def handle_get_store_info(call: ServiceCall) -> ServiceResponse:
         """Get store details, opening hours, services and holiday calendar."""
@@ -505,6 +536,17 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         SERVICE_DELETE_SHOPPING_LIST,
         handle_delete_list,
         schema=SCHEMA_DELETE_LIST,
+        **resp_kwargs,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "get_shopping_lists",
+        handle_get_shopping_lists,
+        schema=vol.Schema(
+            {
+                vol.Optional(ATTR_ENTRY_ID): cv.string,
+            }
+        ),
         **resp_kwargs,
     )
     hass.services.async_register(

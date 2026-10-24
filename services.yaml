@@ -279,3 +279,116 @@ get_personal_offers:
       required: false
       selector:
         text:
+
+get_shopping_lists:
+  name: Hämta inköpslistor
+  description: Hämtar alla inköpslistor från Coop-API:t.
+  fields:
+    entry_id:
+      name: Integrations-ID
+      description: Config entry ID (valfritt vid enbart ett konto).
+      required: false
+      selector:
+        text:
+
+```yaml
+get_receipts:
+  name: Hämta kvitton
+  description: Hämtar kvitton från Coop.
+  fields:
+    entry_id:
+      name: Integrations-ID
+      description: Config entry ID (valfritt vid flera konton).
+      required: false
+      selector:
+        text:
+    from_date:
+      name: Från datum
+      description: Filtrera kvitton från detta datum.
+      required: false
+      selector:
+        date:
+    to_date:
+      name: Till datum
+      description: Filtrera kvitton till detta datum.
+      required: false
+      selector:
+        date:
+    per_page:
+      name: Antal per sida
+      description: Antal kvitton som ska hämtas.
+      required: false
+      selector:
+        number:
+          min: 1
+          mode: box
+
+download_receipt_pdf:
+  name: Ladda ner kvitto som PDF
+  description: Hämtar ett kvitto som PDF och sparar det lokalt.
+  fields:
+    receipt_id:
+      name: Kvitto-ID
+      description: ID för kvittot som ska laddas ner.
+      required: true
+      selector:
+        text:
+    entry_id:
+      name: Integrations-ID
+      description: Config entry ID (valfritt vid flera konton).
+      required: false
+      selector:
+        text:
+
+search_recipes:
+  name: Sök recept
+  description: Söker efter recept hos Coop.
+  fields:
+    query:
+      name: Söktext
+      description: Text att söka efter.
+      required: false
+      selector:
+        text:
+    categories:
+      name: Kategorier
+      description: Filtrera sökningen efter receptkategorier.
+      required: false
+      selector:
+        object:
+    entry_id:
+      name: Integrations-ID
+      description: Config entry ID (valfritt vid flera konton).
+      required: false
+      selector:
+        text:
+
+get_purchase_history:
+  name: Hämta köphistorik
+  description: Hämtar köphistorik för ett visst år och en viss månad.
+  fields:
+    year:
+      name: År
+      description: Året som köphistoriken ska hämtas för.
+      required: false
+      selector:
+        number:
+          min: 2000
+          max: 2100
+          mode: box
+    month:
+      name: Månad
+      description: Månaden som köphistoriken ska hämtas för, 1–12.
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 12
+          mode: box
+    entry_id:
+      name: Integrations-ID
+      description: Config entry ID (valfritt vid flera konton).
+      required: false
+      selector:
+        text:
+```
