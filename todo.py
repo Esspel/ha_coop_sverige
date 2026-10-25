@@ -304,6 +304,7 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
                         "name": item.summary,
                         "status": "completed" if item.status == TodoItemStatus.COMPLETED else "needs_action",
                         "description": item.description or "",
+                        "placement": (item.description or "").split("Avdelning:")[1].split("|")[0].strip() if item.description and "Avdelning:" in item.description else "Övrigt",
                     }
                 )
             attrs["items"] = items

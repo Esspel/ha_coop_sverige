@@ -60,6 +60,9 @@ class CoopShoppingListCard extends HTMLElement {
           .item-row { display: flex; align-items: center; justify-content: space-between; background: var(--secondary-background-color); padding: 8px 12px; border-radius: 8px; }
           .item-row.completed span { text-decoration: line-through; opacity: 0.6; }
           .item-label { display: flex; align-items: center; gap: 8px; cursor: pointer; flex: 1; }
+          .item-actions { display: flex; align-items: center; gap: 6px; }
+          .edit-btn { background: none; border: 1px solid var(--divider-color); color: var(--primary-text-color); border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 0.9em; }
+          .edit-btn:hover { background: var(--secondary-background-color); }
           .delete-btn { background: none; border: none; color: var(--error-color, #db4437); font-size: 1.2em; cursor: pointer; padding: 0 4px; }
           .add-form { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; border-top: 1px solid var(--divider-color); padding-top: 10px; }
           .form-row { display: flex; gap: 6px; }
@@ -70,6 +73,11 @@ class CoopShoppingListCard extends HTMLElement {
           .placement-select { flex: 1; }
           .styled-btn { padding: 8px 14px; border-radius: 6px; border: none; background: var(--primary-color); color: var(--text-primary-color, #fff); font-weight: bold; cursor: pointer; }
           .styled-btn:hover { opacity: 0.9; }
+          .item-category { font-size: 0.85em; opacity: 0.75; margin-left: 6px; font-style: italic; }
+          .item-actions { display: flex; align-items: center; gap: 6px; }
+          .edit-btn { background: none; border: 1px solid var(--divider-color); color: var(--primary-text-color); border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 0.9em; }
+          .edit-btn:hover { background: var(--secondary-background-color); }
+          .delete-btn { background: none; border: none; color: var(--error-color, #db4437); font-size: 1.2em; cursor: pointer; padding: 0 4px; }
         </style>
       `;
       this.content = true;
@@ -175,13 +183,17 @@ class CoopShoppingListCard extends HTMLElement {
         const isCompleted = item.status === 'completed';
         const qtyStr = item.quantity ? `${item.quantity} ` : '';
         const unitStr = item.unit ? `${item.unit} ` : '';
+        const categoryDisplay = item.placement ? ` <span class="item-category">${item.placement}</span>` : '';
         return `
           <div class="item-row ${isCompleted ? 'completed' : ''}">
             <label class="item-label">
               <input type="checkbox" ${isCompleted ? 'checked' : ''} data-idx="${idx}" class="item-checkbox">
-              <span>${qtyStr}${unitStr}${item.summary || item.name || ''}</span>
+              <span>${qtyStr}${unitStr}${item.summary || item.name || ''}${categoryDisplay}</span>
             </label>
-            <button class="delete-btn" data-idx="${idx}">×</button>
+            <div class="item-actions">
+              <button class="edit-btn" data-idx="${idx}" title="Redigera">✏️</button>
+              <button class="delete-btn" data-idx="${idx}">×</button>
+            </div>
           </div>
         `;
       })
@@ -200,6 +212,46 @@ class CoopShoppingListCard extends HTMLElement {
         const idx = parseInt(e.target.dataset.idx, 10);
         this._deleteItem(items[idx]);
       });
+    });
+
+    container.querySelectorAll('.edit-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const idx = parseInt(e.target.dataset.idx, 10);
+        this._editItem(items[idx]);
+      });
+    });
+  }
+
+  async _editItem(item) {
+    const nameInput = this.querySelector('#item-name');
+    const qtyInput = this.querySelector('#item-quantity');
+    const unitSelect = this.querySelector('#item-unit');
+    const placementSelect = this.querySelector('#placement-select');
+
+    const name = prompt('Redigera vara:', item.summary || item.name || '');
+    if (name === null) return;
+
+    const qty = prompt('Antal:', item.quantity ? String(item.quantity) : '1');
+    if (qty === null) return;
+
+    const qtyNum = parseFloat(qty.replace(',', '.'));
+    const unit = prompt('Enhet (st, kg, g, l, dl, pkt):', item.unit || '');
+    if (unit === null) return;
+
+    const placement = prompt('Kategori / Placering:', item.placement || '');
+    if (placement === null) return;
+
+    const listEntity = this._hass.states[this.currentListEntityId];
+    const listId = listEntity.attributes.id || listEntity.attributes.shopping_list_id || listEntity.attributes.list_id || this._listId || listEntity.attributes.friendly_name;
+
+    await this._hass.callService('ha_coop_sverige', 'update_item', {
+      list_id: String(listId),
+      product_id: item.id || item.summary,
+      name: name,
+      quantity: qtyNum,
+      unit: unit,
+      placement: placement,
+      is_checked: item.status === 'completed',
     });
   }
 
