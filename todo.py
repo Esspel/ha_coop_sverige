@@ -202,6 +202,11 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
         self._attr_unique_id = f"{entry_id}_todo_{list_id}"
         self._attr_icon = "mdi:cart-outline"
 
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self.async_write_ha_state()
+
     @property
     def name(self) -> str | None:
         """Return the name of the todo list."""
@@ -286,43 +291,20 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
 
         return {"ID": self._list_id, "Name": "Inköpslista", "Products": []}
 
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return extra attributes including list ID and items for card compatibility."""
-        attrs: dict[str, Any] = {
-            "id": self._list_id,
-            "shopping_list_id": self._list_id,
-            "list_id": self._list_id,
-        }
-        try:
-            items = []
-            for item in (self.todo_items or []):
-                items.append(
-                    {
-                        "id": item.uid,
-                        "summary": item.summary,
-                        "name": item.summary,
-                        "status": "completed" if item.status == TodoItemStatus.COMPLETED else "needs_action",
-                        "description": item.description or "",
-                        "placement": (item.description or "").split("Avdelning:")[1].split("|")[0].strip() if item.description and "Avdelning:" in item.description else "Övrigt",
-                    }
-                )
-            attrs["items"] = items
-        except Exception:
-            attrs["items"] = []
-        return attrs
+    def _get_raw_products(self) -> list[dict[str, Any]]:
+        """Return the raw product dicts for this list."""
+        list_data = self._get_list_data()
+        if not list_data:
+            return []
+        products = list_data.get("products") or list_data.get("Products") or list_data.get("items") or []
+        return products if isinstance(products, list) else []
 
     @property
     def todo_items(self) -> list[TodoItem] | None:
         """Return current items."""
-        list_data = self._get_list_data()
-        if not list_data:
-            return []
-
-        products = list_data.get("products") or list_data.get("Products") or list_data.get("items") or []
         items: list[TodoItem] = []
 
-        for p in products:
+        for p in self._get_raw_products():
             if not isinstance(p, dict):
                 continue
             p_id = str(p.get("ID") or p.get("id") or p.get("productId") or "")
@@ -350,6 +332,43 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
             )
 
         return items
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra attributes including list ID and items for card compatibility."""
+        attrs: dict[str, Any] = {
+            "id": self._list_id,
+            "shopping_list_id": self._list_id,
+            "list_id": self._list_id,
+        }
+        try:
+            items = []
+            for p in self._get_raw_products():
+                if not isinstance(p, dict):
+                    continue
+                p_id = str(p.get("ID") or p.get("id") or p.get("productId") or "")
+                name = p.get("Name") or p.get("name") or p.get("text") or "Vara"
+                is_checked = bool(p.get("Checked") or p.get("isChecked") or p.get("checked", False))
+                placement = p.get("Placement") or p.get("placement") or "Övrigt"
+                qty = p.get("Quantity") or p.get("quantity")
+                unit = p.get("Unit") or p.get("unit")
+                items.append(
+                    {
+                        "id": p_id,
+                        "summary": name,
+                        "name": name,
+                        "status": "completed" if is_checked else "needs_action",
+                        "description": f"{qty} {unit or ''} | Avdelning: {placement}".strip(" |"),
+                        "quantity": str(qty) if qty not in (None, "") else "",
+                        "unit": str(unit) if unit not in (None, "") else "",
+                        "placement": str(placement),
+                        "category": str(placement),
+                    }
+                )
+            attrs["items"] = items
+        except Exception:
+            attrs["items"] = []
+        return attrs
 
     async def async_create_todo_item(self, item: TodoItem) -> None:
         """Create item on Coop list with auto-categorization."""
