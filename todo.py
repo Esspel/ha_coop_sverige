@@ -358,7 +358,7 @@ class CoopTodoListEntity(CoordinatorEntity[CoopCoordinator], TodoListEntity):
                         "summary": name,
                         "name": name,
                         "status": "completed" if is_checked else "needs_action",
-                        "description": f"{qty} {unit or ''} | Avdelning: {placement}".strip(" |"),
+                        "description": f"{str(qty) if qty not in (None, '') else ''} {unit or ''} | Avdelning: {placement}".strip(" |"),
                         "quantity": str(qty) if qty not in (None, "") else "",
                         "unit": str(unit) if unit not in (None, "") else "",
                         "placement": str(placement),

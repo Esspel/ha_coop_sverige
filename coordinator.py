@@ -292,9 +292,12 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             None,
         )
         if active_level:
-            bonus_info["next_level_kr"] = float(
-                active_level.get("amountRemaining", 0.0)
-            )
+            try:
+                bonus_info["next_level_kr"] = float(
+                    active_level.get("amountRemaining", 0.0)
+                )
+            except (TypeError, ValueError):
+                bonus_info["next_level_kr"] = 0.0
         else:
             progress_monetary_str = timeline.get("bonusProgressMonetary") or ""
             if isinstance(progress_monetary_str, str):
