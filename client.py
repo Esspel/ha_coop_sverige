@@ -454,7 +454,9 @@ class CoopAPIClient:
 
         if not betala_token:
             _LOGGER.warning(
-                "Receipts unavailable: Betala token refresh failed or refresh token is missing"
+                "Receipts unavailable: Betala token refresh failed or refresh token is missing. "
+                "Check that the Betala refresh token is configured in the integration options/config. "
+                "If it was rotated or removed, re-authenticate the integration to obtain a new token."
             )
             return {"data": [], "total": 0}
 
