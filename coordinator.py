@@ -267,23 +267,8 @@ class CoopCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         timeline = timeline if isinstance(timeline, dict) else {}
         bonus_info: dict[str, Any] = {
             "next_level_kr": 0.0,
-            "days_until_next_level": 0,
             "bonus_timeline": timeline,
         }
-
-        # Extrahera dagar kvar
-        progress_days_str = (
-            timeline.get("bonusProgressInfoDays")
-            or timeline.get("bonusProgressInfo")
-            or ""
-        )
-        if isinstance(progress_days_str, str):
-            days_match = re.search(r"(\d+)\s*dag", progress_days_str, re.IGNORECASE)
-            if days_match:
-                try:
-                    bonus_info["days_until_next_level"] = int(days_match.group(1))
-                except ValueError:
-                    pass
 
         # Extrahera kronor till nästa nivå direkt från den aktiva nivån i trappan
         levels = timeline.get("levels") or []

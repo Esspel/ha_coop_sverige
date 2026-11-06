@@ -224,15 +224,6 @@ async def async_setup_entry(
         CoopBonusSensor(
             coordinator=coordinator,
             entry_id=entry.entry_id,
-            key="days_until_next_level",
-            name="Dagar till nästa nivå",
-            icon="mdi:clock-alert",
-            state_class=SensorStateClass.MEASUREMENT,
-            native_unit_of_measurement="dagar",
-        ),
-        CoopBonusSensor(
-            coordinator=coordinator,
-            entry_id=entry.entry_id,
             key="last_login",
             name="Senaste inloggning",
             icon="mdi:login",
@@ -374,6 +365,28 @@ class CoopBonusSensor(CoopBaseSensor):
             return round(float(value), 2)
         except (ValueError, TypeError):
             return value
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra attributes for bonus sensors.
+
+        The next level sensor also exposes the raw bonus timeline and the
+        per-level progress entries so templates and dashboards can build
+        richer views of the bonus ladder.
+        """
+        if self._key != "next_level_kr":
+            return {}
+        data = self.coordinator.data
+        if not data:
+            return {}
+        attrs: dict[str, Any] = {}
+        bonus_timeline = data.get("bonus_timeline")
+        if isinstance(bonus_timeline, dict) and bonus_timeline:
+            attrs["bonus_timeline"] = bonus_timeline
+            levels = bonus_timeline.get("levels")
+            if isinstance(levels, list) and levels:
+                attrs["bonus_levels"] = levels
+        return attrs
 
 
 class CoopPersonalOffersSensor(CoopBaseSensor):

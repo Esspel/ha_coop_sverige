@@ -61,9 +61,6 @@
       "next_level_kr": {
         "name": "Nästa nivå (kr)"
       },
-      "days_until_next_level": {
-        "name": "Dagar till nästa nivå"
-      },
       "last_login": {
         "name": "Senaste inloggning"
       },

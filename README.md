@@ -59,7 +59,6 @@ Spåra ditt medlemskap och dina intjänade poäng i realtid:
 - **Medlemspriser (kr / poäng)** – Hur mycket du sparat genom medlemspriser.
 - **Extrabonus (kr / poäng)** – Tilläggsbonusar och kampanjbelöningar.
 - **Nästa nivå (kr)** – Hur mycket du har kvar att handla för till nästa bonusnivå.
-- **Dagar till nästa nivå** – Dagar kvar att samla poäng för månaden.
 - **Senaste inloggning** & **Medlems-ID**.
 
 ---
